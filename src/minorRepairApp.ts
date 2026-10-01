@@ -2808,20 +2808,6 @@ Catatan: ${item.desc || "-"}`;
     } catch (e) {
       console.warn("Mode offline/server fallback, memakai data lokal:", e);
     }
-
-    // Auto-rollover past unfinished complaints to next working day
-    try {
-      const rolloverRes = autoRolloverUnfinishedTickets(undefined, false);
-      if (rolloverRes.rolledOverCount > 0) {
-        const localNow = loadLocal();
-        if (localNow && localNow.length > 0) {
-          complaints = localNow;
-          scheduleRender(16);
-        }
-      }
-    } catch (e) {
-      console.warn("Auto-rollover error:", e);
-    }
   }
 
   function executeDailyRollover(forceToday = true) {
@@ -14872,16 +14858,21 @@ Deskripsi : Air mati total sejak kemarin sore dan pipa sebelum meteran bocor der
   // Load awal saat halaman dibuka
   load();
 
+  let lastSyncTimestamp = 0;
   let syncDebounceTimer: any = null;
   const onSyncTickets = (e?: any) => {
     if (isDisposed || isSelfBroadcasting) return;
     if (e?.detail?.source === "minor_repair") return;
 
+    const now = Date.now();
+    if (now - lastSyncTimestamp < 300) return;
+    lastSyncTimestamp = now;
+
     if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(() => {
-      if (isDisposed) return;
+      if (isDisposed || isSelfBroadcasting) return;
       load(true);
-    }, 200);
+    }, 250);
   };
 
   const onHashChange = () => {
@@ -14927,6 +14918,7 @@ Deskripsi : Air mati total sejak kemarin sore dan pipa sebelum meteran bocor der
   window.addEventListener("aetra:tickets_changed", onSyncTickets);
   window.addEventListener("aetra:dashboard_refresh_needed", onSyncTickets);
   const onStorageChange = (e: StorageEvent) => {
+    if (isSelfBroadcasting || isDisposed) return;
     if (e.key === "aetra_work_orders_backup" || e.key === "aetra_latest_wo_notification_event") {
       onSyncTickets();
     }
