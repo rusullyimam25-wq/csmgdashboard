@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 380" width="100%" height="100%">
+  <defs>
+    <!-- Orange Hands Gradient -->
+    <linearGradient id="aetraOrangeGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#E85814"/>
+      <stop offset="60%" stop-color="#F37021"/>
+      <stop offset="100%" stop-color="#F99B28"/>
+    </linearGradient>
+
+    <!-- Blue Figure Gradient -->
+    <linearGradient id="aetraBlueGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#004A8B"/>
+      <stop offset="100%" stop-color="#0066B3"/>
+    </linearGradient>
+
+    <!-- Corporate Blue Solid -->
+    <style>
+      .aetra-blue { fill: #0054A6; }
+      .aetra-blue-sub { fill: #0054A6; font-family: 'Plus Jakarta Sans', 'Segoe UI', system-ui, -apple-system, sans-serif; }
+    </style>
+  </defs>
+
+  <!-- Graphic Emblem (Positioned above 'tra') -->
+  <g id="aetra-emblem" transform="translate(400, 105)">
+    <!-- LEFT ORANGE HAND -->
+    <path d="M-85,-22 C-76,0 -60,24 -40,38 C-20,52 -8,64 -4,95 C-8,92 -16,78 -22,64 C-32,44 -50,26 -64,12 C-78,-2 -88,-16 -85,-22 Z" fill="url(#aetraOrangeGrad)"/>
+    <path d="M-72,-30 C-70,-14 -58,10 -40,26 C-22,42 -8,60 -3,93 C-8,88 -18,74 -26,58 C-38,36 -58,15 -72,-8 C-77,-19 -75,-27 -72,-30 Z" fill="url(#aetraOrangeGrad)"/>
+    <path d="M-78,-16 C-54,18 -28,48 -3,95 C-7,68 -26,38 -52,10 C-68,-6 -76,-13 -78,-16 Z" fill="#F37021"/>
+
+    <!-- RIGHT ORANGE HAND -->
+    <path d="M85,-22 C76,0 60,24 40,38 C20,52 8,64 4,95 C8,92 16,78 22,64 C32,44 50,26 64,12 C78,-2 88,-16 85,-22 Z" fill="url(#aetraOrangeGrad)"/>
+    <path d="M72,-30 C70,-14 58,10 40,26 C22,42 8,60 3,93 C8,88 18,74 26,58 C38,36 58,15 72,-8 C77,-19 75,-27 72,-30 Z" fill="url(#aetraOrangeGrad)"/>
+    <path d="M78,-16 C54,18 28,48 3,95 C7,68 26,38 52,10 C68,-6 76,-13 78,-16 Z" fill="#F37021"/>
+
+    <!-- INNER BLUE FIGURE: LEFT ARM -->
+    <path d="M-50,-36 C-42,-16 -28,8 -12,22 C-4,29 0,38 0,55 C-2,46 -6,35 -16,26 C-28,14 -40,-8 -50,-36 Z" fill="url(#aetraBlueGrad)"/>
+    <path d="M-48,-34 C-38,-10 -24,12 -4,32 C-2,48 -6,38 -16,26 C-28,12 -40,-10 -48,-34 Z" fill="#0054A6"/>
+
+    <!-- INNER BLUE FIGURE: RIGHT ARM -->
+    <path d="M50,-36 C42,-16 28,8 12,22 C4,29 0,38 0,55 C2,46 6,35 16,26 C28,14 40,-8 50,-36 Z" fill="url(#aetraBlueGrad)"/>
+    <path d="M48,-34 C38,-10 24,12 4,32 C2,48 6,38 16,26 C28,12 40,-10 48,-34 Z" fill="#0054A6"/>
+
+    <!-- CENTER HEAD: WATER DROPLET / FLAME -->
+    <path d="M0,-78 C12,-60 16,-44 9,-32 C5,-24 -5,-24 -9,-32 C-16,-44 -12,-60 0,-78 Z" fill="#0054A6"/>
+    <!-- Teardrop Inner Negative Cutout -->
+    <path d="M0,-66 C5,-53 7,-42 3,-35 C1,-31 -3,-31 -5,-35 C-9,-42 -7,-53 0,-66 Z" fill="#FFFFFF"/>
+    
+    <!-- Central Body Stem -->
+    <path d="M-2,6 C-10,-8 -5,-26 0,-30 C5,-26 10,-8 2,6 C1,32 -1,32 -2,6 Z" fill="#0054A6"/>
+  </g>
+
+  <!-- Wordmark "aetra" -->
+  <g id="aetra-text" class="aetra-blue">
+    <!-- First 'a' -->
+    <path d="M68,188 C54,188 42,196 36,208 L36,192 L14,192 L14,264 L36,264 L36,254 C42,264 54,270 68,270 C96,270 114,248 114,228 C114,206 96,188 68,188 Z M62,248 C48,248 38,238 38,228 C38,218 48,209 62,209 C76,209 88,218 88,228 C88,239 76,248 62,248 Z"/>
+
+    <!-- 'e' -->
+    <path d="M166,188 C136,188 116,208 116,230 C116,254 136,270 168,270 C188,270 204,262 214,250 L196,236 C190,243 180,248 168,248 C154,248 142,241 140,230 L216,230 C218,225 218,220 218,215 C218,200 198,188 166,188 Z M140,217 C142,209 152,204 166,204 C178,204 188,209 191,217 L140,217 Z"/>
+
+    <!-- 't' -->
+    <path d="M250,172 L250,192 L272,192 L272,210 L250,210 L250,246 C250,250 253,252 258,252 C263,252 267,251 270,249 L270,268 C264,269 256,270 248,270 C232,270 226,260 226,244 L226,210 L214,210 L214,192 L226,192 L226,172 L250,172 Z"/>
+
+    <!-- 'r' -->
+    <path d="M280,192 L302,192 L302,206 C308,196 318,190 330,190 C334,190 338,191 342,193 L336,214 C332,212 326,211 320,211 C308,211 302,220 302,234 L302,264 L280,264 L280,192 Z"/>
+
+    <!-- Second 'a' -->
+    <path d="M394,188 C380,188 368,196 362,208 L362,192 L340,192 L340,264 L362,264 L362,254 C368,264 380,270 394,270 C422,270 440,248 440,228 C440,206 422,188 394,188 Z M388,248 C374,248 364,238 364,228 C364,218 374,209 388,209 C402,209 414,218 414,228 C414,239 402,248 388,248 Z"/>
+  </g>
+
+  <!-- Sub-wordmark "tangerang" (Properly centered under 'aetra') -->
+  <text x="100" y="325" class="aetra-blue-sub" font-size="33" font-weight="600" letter-spacing="10">tangerang</text>
+</svg>

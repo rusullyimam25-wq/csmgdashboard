@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>AETRA AquaSync - Command Center & Dashboard Komplain</title>
+    <link rel="icon" type="image/svg+xml" href="/aetra-logo.svg" />
+    <link rel="apple-touch-icon" href="/aetra-logo.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0284C7" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="AETRA AquaSync" />
+    <meta name="description" content="AETRA AquaSync: Command Center Operasional & Sistem Resolusi Komplain Pelanggan (AETRA ResolveX) PT Aetra Air Tangerang dengan auto-rollover harian, pelacakan live armada, dan BAST digital." />
+    <meta property="og:title" content="AETRA AquaSync - Command Center & Dashboard Komplain" />
+    <meta property="og:description" content="AETRA AquaSync: Command Center Operasional & Sistem Resolusi Komplain Pelanggan (AETRA ResolveX) PT Aetra Air Tangerang dengan auto-rollover harian, pelacakan live armada, dan BAST digital." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- External Libraries & Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+    <script>
+      // Global error listener to prevent Leaflet animation and cross-origin errors from bubbling
+      function isBenignError(e, msg) {
+        var str = ((msg || (e && e.message)) || '').toString().toLowerCase();
+        return !str || str === 'script error.' || str.indexOf('_leaflet_pos') !== -1 || str.indexOf('leaflet') !== -1;
+      }
+      window.addEventListener('error', function(e) {
+        if (isBenignError(e, e.message)) {
+          e.preventDefault && e.preventDefault();
+          e.stopImmediatePropagation && e.stopImmediatePropagation();
+          return true;
+        }
+      }, true);
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        if (isBenignError(error, msg)) {
+          return true;
+        }
+        return false;
+      };
+      window.addEventListener('unhandledrejection', function(e) {
+        var reasonStr = (e && e.reason ? (e.reason.message || e.reason) : '').toString().toLowerCase();
+        if (reasonStr.indexOf('_leaflet_pos') !== -1 || reasonStr.indexOf('leaflet') !== -1) {
+          e.preventDefault && e.preventDefault();
+        }
+      });
+    </script>
+    <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="/leaflet.js"></script>
+    <script>
+      // Defensive guard for Leaflet
+      try {
+        if (window.L) {
+          if (window.L.Map && window.L.Map.prototype) {
+            window.L.Map.prototype._getMapPanePos = function() {
+              if (!this._mapPane) return (window.L && window.L.Point) ? new window.L.Point(0, 0) : { x: 0, y: 0 };
+              return this._mapPane._leaflet_pos || ((window.L && window.L.Point) ? new window.L.Point(0, 0) : { x: 0, y: 0 });
+            };
+          }
+          if (window.L.PosAnimation && window.L.PosAnimation.prototype) {
+            var origRun = window.L.PosAnimation.prototype.run;
+            window.L.PosAnimation.prototype.run = function(el, newPos, duration, easeLinearity) {
+              if (!el) return this;
+              return origRun.call(this, el, newPos, duration, easeLinearity);
+            };
+          }
+          if (window.L.DomUtil) {
+            var origGetPosition = window.L.DomUtil.getPosition;
+            window.L.DomUtil.getPosition = function(el) {
+              if (!el) {
+                return (window.L && window.L.Point) ? new window.L.Point(0, 0) : { x: 0, y: 0 };
+              }
+              try {
+                return origGetPosition ? origGetPosition.call(window.L.DomUtil, el) : (el._leaflet_pos || ((window.L && window.L.Point) ? new window.L.Point(0, 0) : { x: 0, y: 0 }));
+              } catch (err) {
+                return (window.L && window.L.Point) ? new window.L.Point(0, 0) : { x: 0, y: 0 };
+              }
+            };
+
+            var origSetPosition = window.L.DomUtil.setPosition;
+            window.L.DomUtil.setPosition = function(el, point) {
+              if (!el) return;
+              try {
+                if (origSetPosition) {
+                  origSetPosition.call(window.L.DomUtil, el, point);
+                } else {
+                  el._leaflet_pos = point;
+                }
+              } catch (err) {}
+            };
+          }
+        }
+      } catch (e) {
+        console.warn('Leaflet defensive patch notice:', e);
+      }
+    </script>
+    <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

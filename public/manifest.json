@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "AETRA Mobile - Petugas Lapangan",
+  "short_name": "AetraMobile",
+  "description": "Sistem Aplikasi Lapangan Work Order Minor Repair PT Aetra Air Tangerang",
+  "start_url": "/#mobile",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0284C7",
+  "theme_color": "#0284C7",
+  "icons": [
+    {
+      "src": "/aetra-logo.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

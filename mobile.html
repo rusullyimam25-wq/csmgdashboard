@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>AETRA AquaSync Mobile - Aplikasi Petugas Lapangan</title>
+    <link rel="icon" type="image/svg+xml" href="/aetra-logo.svg" />
+    <link rel="apple-touch-icon" href="/aetra-logo.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0284C7" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="AETRA AquaSync" />
+    <meta name="description" content="AETRA AquaSync Mobile: Aplikasi pendamping kerja teknisi & petugas lapangan PT Aetra Air Tangerang." />
+
+    <!-- External Fonts & Libraries -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+    <script>
+      window.addEventListener('error', function(e) {
+        if (!e.message || e.message === 'Script error.') {
+          e.preventDefault && e.preventDefault();
+        }
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        e.preventDefault && e.preventDefault();
+      });
+    </script>
+    <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  </head>
+  <body class="mobile-mode">
+    <div id="root"></div>
+    <script type="module" src="./src/mobileMain.tsx"></script>
+  </body>
+</html>

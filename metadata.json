@@ -1,0 +1,10 @@
+{
+  "name": "Remix Papan Kerja Minor Repair",
+  "description": "Sistem manajemen pengerjaan Work Order minor repair Aetra Air Tangerang dengan peta armada, pembagian kuota harian, integrasi Supabase, dan SLA tracking.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
