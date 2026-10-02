@@ -122,63 +122,139 @@ export interface CaseCategoryItem {
   key: string;
   name: string;
   defaultDiv: DivisionId;
+  slaDays: number;
+}
+
+/**
+ * Matriks Standar Layanan (SLA dalam Hari Kerja) Berdasarkan Standar Kasus PT Aetra Air Tangerang
+ */
+export const AETRA_CASE_SLA_DAYS: Record<string, number> = {
+  // Kolom Kiri
+  "BPPD": 8,
+  "BPPDIND": 7,
+  "INFO-PLG": 1,
+  "INFO_PLG": 1,
+  "KATM": 1,
+  "KATMIND": 1,
+  "KATR": 2,
+  "KATRIND": 2,
+  "KBBP": 16,
+  "KBGL": 7,
+  "KBSM": 3,
+  "KBSMIND": 3,
+  "KBTR": 4,
+  "KBTT": 7,
+  "KILL": 15,
+  "KKMR": 3,
+  "KKMRIND": 3,
+  "KLBC": 3,
+  "KMAL": 5,
+  "KMALIND": 3,
+  "KMDT": 5,
+  "KMTA": 7,
+  "KPAP": 2,
+  "KPAT": 1,
+  "KPCT": 10,
+
+  // Kolom Kanan
+  "KPDB": 7,
+  "KPGP": 1,
+  "KPKT": 1,
+  "KPMR": 4,
+  "KPMRIND": 5,
+  "KPPA": 3,
+  "KPPM": 7,
+  "KPPR": 6,
+  "KPPS": 30,
+  "KPPSIND": 30,
+  "KPSB": 3,
+  "KPSM": 8,
+  "KRMT": 6,
+  "KRPR": 8,
+  "KRPT": 10,
+  "KSPM": 7,
+  "KTST": 7,
+  "KTST-RC": 7,
+  "KTST_RC": 7,
+  "LAPUL": 1,
+  "PPMI": 4,
+  "TERAREQ": 15,
+  "TR09": 12,
+  "TRO9": 12,
+  "TR09IND": 9,
+  "TRO9IND": 9,
+};
+
+/**
+ * Mengambil SLA hari kerja berdasarkan kode kategori kasus Aetra
+ */
+export function getAetraCaseSlaDays(category: string): number {
+  const cat = (category || "").toUpperCase().trim().replace(/[^A-Z0-9_-]/g, "");
+  if (AETRA_CASE_SLA_DAYS[cat] !== undefined) {
+    return AETRA_CASE_SLA_DAYS[cat];
+  }
+  const cleanKey = cat.replace(/IND$/, "");
+  if (AETRA_CASE_SLA_DAYS[cleanKey] !== undefined) {
+    return AETRA_CASE_SLA_DAYS[cleanKey];
+  }
+  return 3; // Default 3 hari kerja
 }
 
 /**
  * Daftar Resmi 47 Jenis Case / Keluhan Pelanggan PT Aetra Air Tangerang
- * (Sesuai Matriks Resmi Operasional Aetra)
+ * (Sesuai Matriks Resmi Operasional & SLA Aetra)
  */
 export const AETRA_CASE_CATEGORIES: CaseCategoryItem[] = [
   // Kolom Kiri
-  { key: "BPPD", name: "Biaya Penambahan Pipa Dinas", defaultDiv: "sales_support" },
-  { key: "BPPDIND", name: "Biaya Penambahan Pipa Dinas Industri", defaultDiv: "key_account" },
-  { key: "INFO-PLG", name: "Info ke Pelanggan", defaultDiv: "sales_support" },
-  { key: "KATM", name: "Air Tidak Mengalir Domestic", defaultDiv: "technical_support" },
-  { key: "KATMIND", name: "Air Tidak Mengalir Industri", defaultDiv: "key_account" },
-  { key: "KATR", name: "Air Kotor Domestic", defaultDiv: "technical_support" },
-  { key: "KATRIND", name: "Air Kotor Industri", defaultDiv: "key_account" },
-  { key: "KBBP", name: "Sudah Bayar Belum Pasang Meter", defaultDiv: "sales_support" },
-  { key: "KBGL", name: "Bekas Galian", defaultDiv: "minor_repair" },
-  { key: "KBSM", name: "Bocor Sebelum Meter", defaultDiv: "minor_repair" },
-  { key: "KBSMIND", name: "Bocor Sebelum Meter Industri", defaultDiv: "key_account" },
-  { key: "KBTR", name: "Belum Menerima Tagihan", defaultDiv: "sales_support" },
-  { key: "KBTT", name: "Sudah Bayar Tapi di Tagih", defaultDiv: "sales_support" },
-  { key: "KILL", name: "Illegal Consumption", defaultDiv: "technical_support" },
-  { key: "KKMR", name: "Kran Meter Rusak", defaultDiv: "minor_repair" },
-  { key: "KKMRIND", name: "Kran Meter Rusak Industri", defaultDiv: "key_account" },
-  { key: "KLBC", name: "Pipa Jaringan Bocor", defaultDiv: "minor_repair" },
-  { key: "KMAL", name: "Meter Air Lepas", defaultDiv: "minor_repair" },
-  { key: "KMALIND", name: "Meter Air Lepas Industri", defaultDiv: "key_account" },
-  { key: "KMDT", name: "Meter Dipasang Terbalik", defaultDiv: "minor_repair" },
-  { key: "KMTA", name: "Meter Tidak Ada", defaultDiv: "technical_support" },
-  { key: "KPAP", name: "Perubahan Alamat Premise", defaultDiv: "sales_support" },
-  { key: "KPAT", name: "Perubahan Alamat Billing", defaultDiv: "sales_support" },
-  { key: "KPCT", name: "Pengajuan Cicilan Tagihan", defaultDiv: "sales_support" },
+  { key: "BPPD", name: "Biaya Penambahan Pipa Dinas", defaultDiv: "sales_support", slaDays: 8 },
+  { key: "BPPDIND", name: "Biaya Penambahan Pipa Dinas Industri", defaultDiv: "key_account", slaDays: 7 },
+  { key: "INFO-PLG", name: "Info ke Pelanggan", defaultDiv: "sales_support", slaDays: 1 },
+  { key: "KATM", name: "Air Tidak Mengalir Domestic", defaultDiv: "technical_support", slaDays: 1 },
+  { key: "KATMIND", name: "Air Tidak Mengalir Industri", defaultDiv: "key_account", slaDays: 1 },
+  { key: "KATR", name: "Air Kotor Domestic", defaultDiv: "technical_support", slaDays: 2 },
+  { key: "KATRIND", name: "Air Kotor Industri", defaultDiv: "key_account", slaDays: 2 },
+  { key: "KBBP", name: "Sudah Bayar Belum Pasang Meter", defaultDiv: "sales_support", slaDays: 16 },
+  { key: "KBGL", name: "Bekas Galian", defaultDiv: "minor_repair", slaDays: 7 },
+  { key: "KBSM", name: "Bocor Sebelum Meter", defaultDiv: "minor_repair", slaDays: 3 },
+  { key: "KBSMIND", name: "Bocor Sebelum Meter Industri", defaultDiv: "key_account", slaDays: 3 },
+  { key: "KBTR", name: "Belum Menerima Tagihan", defaultDiv: "sales_support", slaDays: 4 },
+  { key: "KBTT", name: "Sudah Bayar Tapi di Tagih", defaultDiv: "sales_support", slaDays: 7 },
+  { key: "KILL", name: "Illegal Consumption", defaultDiv: "technical_support", slaDays: 15 },
+  { key: "KKMR", name: "Kran Meter Rusak", defaultDiv: "minor_repair", slaDays: 3 },
+  { key: "KKMRIND", name: "Kran Meter Rusak Industri", defaultDiv: "key_account", slaDays: 3 },
+  { key: "KLBC", name: "Pipa Jaringan Bocor", defaultDiv: "minor_repair", slaDays: 3 },
+  { key: "KMAL", name: "Meter Air Lepas", defaultDiv: "minor_repair", slaDays: 5 },
+  { key: "KMALIND", name: "Meter Air Lepas Industri", defaultDiv: "key_account", slaDays: 3 },
+  { key: "KMDT", name: "Meter Dipasang Terbalik", defaultDiv: "minor_repair", slaDays: 5 },
+  { key: "KMTA", name: "Meter Tidak Ada", defaultDiv: "technical_support", slaDays: 7 },
+  { key: "KPAP", name: "Perubahan Alamat Premise", defaultDiv: "sales_support", slaDays: 2 },
+  { key: "KPAT", name: "Perubahan Alamat Billing", defaultDiv: "sales_support", slaDays: 1 },
+  { key: "KPCT", name: "Pengajuan Cicilan Tagihan", defaultDiv: "sales_support", slaDays: 10 },
 
   // Kolom Kanan
-  { key: "KPDB", name: "Double Bayar", defaultDiv: "sales_support" },
-  { key: "KPGP", name: "Permintaan Balik Nama", defaultDiv: "sales_support" },
-  { key: "KPKT", name: "Penyambungan Kembali Akibat Tunggakan", defaultDiv: "sales_support" },
-  { key: "KPMR", name: "Meter Rusak", defaultDiv: "minor_repair" },
-  { key: "KPMRIND", name: "Meter Rusak Industri", defaultDiv: "key_account" },
-  { key: "KPPA", name: "Revisi Nama", defaultDiv: "sales_support" },
-  { key: "KPPM", name: "Perilaku Pembaca Meter", defaultDiv: "technical_support" },
-  { key: "KPPR", name: "Pipa Dinas Rusak", defaultDiv: "minor_repair" },
-  { key: "KPPS", name: "Permintaan Pemutusan Sambungan", defaultDiv: "sales_support" },
-  { key: "KPPSIND", name: "Permintaan Pemutusan Sambungan Industri", defaultDiv: "key_account" },
-  { key: "KPSB", name: "Salah Bayar", defaultDiv: "sales_support" },
-  { key: "KPSM", name: "Petugas Penyegelan", defaultDiv: "technical_support" },
-  { key: "KRMT", name: "Permintaan Relokasi Meter (teknis)", defaultDiv: "minor_repair" },
-  { key: "KRPR", name: "Rekening Pembayaran Rendah", defaultDiv: "sales_support" },
-  { key: "KRPT", name: "Rekening Pembayaran Tinggi", defaultDiv: "sales_support" },
-  { key: "KSPM", name: "Meter Tertukar", defaultDiv: "technical_support" },
-  { key: "KTST", name: "Tidak Sesuai Tarif", defaultDiv: "sales_support" },
-  { key: "KTST-RC", name: "Tidak Sesuai Tarif - Re Class", defaultDiv: "sales_support" },
-  { key: "LAPUL", name: "Lapor Ulang", defaultDiv: "sales_support" },
-  { key: "PPMI", name: "Permintaan Penyesuaian Meter Industri", defaultDiv: "key_account" },
-  { key: "TERAREQ", name: "Tera Meter Request", defaultDiv: "technical_support" },
-  { key: "TR09", name: "Pindah Meter", defaultDiv: "minor_repair" },
-  { key: "TR09IND", name: "Pindah Meter Industri", defaultDiv: "key_account" },
+  { key: "KPDB", name: "Double Bayar", defaultDiv: "sales_support", slaDays: 7 },
+  { key: "KPGP", name: "Permintaan Balik Nama", defaultDiv: "sales_support", slaDays: 1 },
+  { key: "KPKT", name: "Penyambungan Kembali Akibat Tunggakan", defaultDiv: "sales_support", slaDays: 1 },
+  { key: "KPMR", name: "Meter Rusak", defaultDiv: "minor_repair", slaDays: 4 },
+  { key: "KPMRIND", name: "Meter Rusak Industri", defaultDiv: "key_account", slaDays: 5 },
+  { key: "KPPA", name: "Revisi Nama", defaultDiv: "sales_support", slaDays: 3 },
+  { key: "KPPM", name: "Perilaku Pembaca Meter", defaultDiv: "technical_support", slaDays: 7 },
+  { key: "KPPR", name: "Pipa Dinas Rusak", defaultDiv: "minor_repair", slaDays: 6 },
+  { key: "KPPS", name: "Permintaan Pemutusan Sambungan", defaultDiv: "sales_support", slaDays: 30 },
+  { key: "KPPSIND", name: "Permintaan Pemutusan Sambungan Industri", defaultDiv: "key_account", slaDays: 30 },
+  { key: "KPSB", name: "Salah Bayar", defaultDiv: "sales_support", slaDays: 3 },
+  { key: "KPSM", name: "Petugas Penyegelan", defaultDiv: "technical_support", slaDays: 8 },
+  { key: "KRMT", name: "Permintaan Relokasi Meter (teknis)", defaultDiv: "minor_repair", slaDays: 6 },
+  { key: "KRPR", name: "Rekening Pembayaran Rendah", defaultDiv: "sales_support", slaDays: 8 },
+  { key: "KRPT", name: "Rekening Pembayaran Tinggi", defaultDiv: "sales_support", slaDays: 10 },
+  { key: "KSPM", name: "Meter Tertukar", defaultDiv: "technical_support", slaDays: 7 },
+  { key: "KTST", name: "Tidak Sesuai Tarif", defaultDiv: "sales_support", slaDays: 7 },
+  { key: "KTST-RC", name: "Tidak Sesuai Tarif - Re Class", defaultDiv: "sales_support", slaDays: 7 },
+  { key: "LAPUL", name: "Lapor Ulang", defaultDiv: "sales_support", slaDays: 1 },
+  { key: "PPMI", name: "Permintaan Penyesuaian Meter Industri", defaultDiv: "key_account", slaDays: 4 },
+  { key: "TERAREQ", name: "Tera Meter Request", defaultDiv: "technical_support", slaDays: 15 },
+  { key: "TR09", name: "Pindah Meter", defaultDiv: "minor_repair", slaDays: 12 },
+  { key: "TR09IND", name: "Pindah Meter Industri", defaultDiv: "key_account", slaDays: 9 },
 ];
 
 /**

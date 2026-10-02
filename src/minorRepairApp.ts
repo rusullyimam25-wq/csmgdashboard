@@ -6,7 +6,7 @@ import * as XLSX from "xlsx";
 import { openReportPreviewModal } from "./reportPreviewModal";
 import { downloadReportPdf } from "./reportPdfGenerator";
 import { openSignaturePadModal } from "./signaturePadModal";
-import { TicketComment } from "./types/division";
+import { TicketComment, AETRA_CASE_SLA_DAYS, getAetraCaseSlaDays } from "./types/division";
 import { createTicketCommentFeed } from "./components/ticketCommentFeed";
 import { openDailyActivityLogModal } from "./components/dailyActivityLogModal";
 import { mountWeeklySlaWidget } from "./components/WeeklySlaRechartsWidget";
@@ -161,34 +161,10 @@ export function initMinorRepairApp(rootElement: HTMLElement) {
   ];
 
   const SLA_DAYS = 14;
-  const SLA_RULES_MAP: Record<string, number> = {
-    KATM: 1,
-    KATMIND: 1,
-    KBSM: 3,
-    KBSMIND: 3,
-    KKMR: 3,
-    KKMRIND: 3,
-    KMDT: 5,
-    KMTA: 7,
-    KPMR: 4,
-    KPMRIND: 4,
-    KPPR: 6,
-    TR09: 12,
-    TRO9: 12,
-    TR09IND: 12,
-    TRO9IND: 12,
-  };
+  const SLA_RULES_MAP: Record<string, number> = AETRA_CASE_SLA_DAYS;
 
   function getSlaDaysForCase(category: string): number {
-    const key = (category || "").trim().toUpperCase();
-    if (SLA_RULES_MAP[key] !== undefined) {
-      return SLA_RULES_MAP[key];
-    }
-    const cleanKey = key.replace(/IND$/, "");
-    if (SLA_RULES_MAP[cleanKey] !== undefined) {
-      return SLA_RULES_MAP[cleanKey];
-    }
-    return 14; // Standar default SLA
+    return getAetraCaseSlaDays(category);
   }
   let MAX_PER_DAY = 10;
 

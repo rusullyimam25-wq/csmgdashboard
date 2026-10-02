@@ -16,7 +16,7 @@ import {
   generateCaseId,
 } from "../services/divisionTicketService";
 import { publishWorkOrderNotification } from "../services/workOrderNotificationService";
-import { DivisionId, getRecommendedDivision } from "../types/division";
+import { DivisionId, getRecommendedDivision, getAetraCaseSlaDays } from "../types/division";
 import { saveSingleSubmission } from "../services/customerSubmissionService";
 
 // Operational areas in Tangerang
@@ -1274,6 +1274,10 @@ Apa yang sedang dialami di rumah Anda saat ini?`,
             <div style="display: flex; justify-content: space-between;">
               <span style="color: #94A3B8;">Jenis Kendala:</span>
               <strong style="color: #FCD34D;">${catInfo.icon} ${catInfo.title}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: #94A3B8;">Target SLA Pengerjaan:</span>
+              <strong style="color: #38BDF8;">⏱️ ${getAetraCaseSlaDays(ticket.category)} Hari Kerja</strong>
             </div>
             <div style="display: flex; justify-content: space-between;">
               <span style="color: #94A3B8;">Alamat Pelapor:</span>

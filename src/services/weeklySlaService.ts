@@ -7,6 +7,7 @@
 
 import { UnifiedTicket } from "./divisionTicketService";
 import { ComplaintItem } from "../minorRepairApp";
+import { AETRA_CASE_SLA_DAYS, getAetraCaseSlaDays } from "../types/division";
 
 export interface SlaDayData {
   dayName: string; // e.g. "Senin", "Selasa", ...
@@ -65,58 +66,73 @@ export interface WeeklySlaSummary {
   officerData: SlaOfficerData[];
 }
 
-export const SLA_RULES_HOURS: Record<string, number> = {
-  KATM: 24, // 1 day
-  KATMIND: 24,
-  KBSM: 72, // 3 days
-  KBSMIND: 72,
-  KKMR: 72, // 3 days
-  KKMRIND: 72,
-  KPMR: 96, // 4 days
-  KPMRIND: 96,
-  KMDT: 120, // 5 days
-  KMAL: 72, // 3 days
-  KMTA: 168, // 7 days
-  KPPR: 144, // 6 days
-  TR09: 288, // 12 days
-  TRO9: 288,
-  KATR: 48, // 2 days
-  KATRIND: 48,
-  KBGL: 48,
-  KBBP: 72,
-};
+export const SLA_RULES_HOURS: Record<string, number> = Object.entries(AETRA_CASE_SLA_DAYS).reduce(
+  (acc, [k, days]) => {
+    acc[k] = days * 24;
+    return acc;
+  },
+  {} as Record<string, number>
+);
 
 export const CATEGORY_NAMES_MAP: Record<string, string> = {
+  BPPD: "Biaya Penambahan Pipa Dinas",
+  BPPDIND: "Biaya Penambahan Pipa Dinas Industri",
+  "INFO-PLG": "Info ke Pelanggan",
+  INFO_PLG: "Info ke Pelanggan",
+  KATM: "Air Tidak Mengalir Domestic",
+  KATMIND: "Air Tidak Mengalir Industri",
+  KATR: "Air Kotor Domestic",
+  KATRIND: "Air Kotor Industri",
+  KBBP: "Sudah Bayar Belum Pasang Meter",
+  KBGL: "Bekas Galian",
   KBSM: "Bocor Sebelum Meter",
-  KBSMIND: "Bocor Sebelum Meter (Industri)",
+  KBSMIND: "Bocor Sebelum Meter Industri",
+  KBTR: "Belum Menerima Tagihan",
+  KBTT: "Sudah Bayar Tapi di Tagih",
+  KILL: "Illegal Consumption",
   KKMR: "Kran Meter Rusak",
-  KKMRIND: "Kran Meter Rusak (Industri)",
-  KPMR: "Meter Rusak / Macet",
-  KPMRIND: "Meter Rusak (Industri)",
-  KATM: "Air Tidak Mengalir",
-  KATMIND: "Air Mati Industri",
-  KATR: "Air Kotor / Keruh",
+  KKMRIND: "Kran Meter Rusak Industri",
+  KLBC: "Pipa Jaringan Bocor",
   KMAL: "Meter Air Lepas",
-  KMDT: "Meter Pasang Terbalik",
-  KPPR: "Pipa Dinas Rusak",
+  KMALIND: "Meter Air Lepas Industri",
+  KMDT: "Meter Dipasang Terbalik",
   KMTA: "Meter Tidak Ada",
+  KPAP: "Perubahan Alamat Premise",
+  KPAT: "Perubahan Alamat Billing",
+  KPCT: "Pengajuan Cicilan Tagihan",
+  KPDB: "Double Bayar",
+  KPGP: "Permintaan Balik Nama",
+  KPKT: "Penyambungan Kembali Akibat Tunggakan",
+  KPMR: "Meter Rusak",
+  KPMRIND: "Meter Rusak Industri",
+  KPPA: "Revisi Nama",
+  KPPM: "Perilaku Pembaca Meter",
+  KPPR: "Pipa Dinas Rusak",
+  KPPS: "Permintaan Pemutusan Sambungan",
+  KPPSIND: "Permintaan Pemutusan Sambungan Industri",
+  KPSB: "Salah Bayar",
+  KPSM: "Petugas Penyegelan",
+  KRMT: "Permintaan Relokasi Meter (teknis)",
+  KRPR: "Rekening Pembayaran Rendah",
+  KRPT: "Rekening Pembayaran Tinggi",
+  KSPM: "Meter Tertukar",
+  KTST: "Tidak Sesuai Tarif",
+  "KTST-RC": "Tidak Sesuai Tarif - Re Class",
+  KTST_RC: "Tidak Sesuai Tarif - Re Class",
+  LAPUL: "Lapor Ulang",
+  PPMI: "Permintaan Penyesuaian Meter Industri",
+  TERAREQ: "Tera Meter Request",
   TR09: "Pindah Meter",
   TRO9: "Pindah Meter",
+  TR09IND: "Pindah Meter Industri",
+  TRO9IND: "Pindah Meter Industri",
 };
 
 /**
  * Returns the target SLA in hours for a given complaint category
  */
 export function getTargetSlaHours(category: string): number {
-  const key = (category || "").trim().toUpperCase();
-  if (SLA_RULES_HOURS[key] !== undefined) {
-    return SLA_RULES_HOURS[key];
-  }
-  const cleanKey = key.replace(/IND$/, "");
-  if (SLA_RULES_HOURS[cleanKey] !== undefined) {
-    return SLA_RULES_HOURS[cleanKey];
-  }
-  return 72; // Default realistic target SLA (3 days = 72 hours)
+  return getAetraCaseSlaDays(category) * 24;
 }
 
 /**

@@ -10,6 +10,7 @@ import {
   loadAllUnifiedTickets,
   saveSingleTicket,
 } from "../services/divisionTicketService";
+import { getAetraCaseSlaDays } from "../types/division";
 import { publishWorkOrderNotification } from "../services/workOrderNotificationService";
 import {
   generateCustomerLiveTrackingUrl,
@@ -633,8 +634,9 @@ export function renderCustomerLiveTrackingView(
           <div style="color: #94A3B8; font-size: 11.5px; line-height: 1.4;">
             📍 ${currentTicket.address} (${currentTicket.area})
           </div>
-          <div style="margin-top: 4px; padding-top: 6px; border-top: 1px solid #334155; font-size: 11px; color: #FCD34D;">
-            🔧 Keluhan: <strong>${currentTicket.category}</strong>
+          <div style="margin-top: 4px; padding-top: 6px; border-top: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+            <span style="color: #FCD34D;">🔧 Keluhan: <strong>${currentTicket.category}</strong></span>
+            <span style="color: #38BDF8; font-weight: 700; background: rgba(56, 189, 248, 0.15); padding: 2px 8px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.3);">⏱️ Standar SLA: ${getAetraCaseSlaDays(currentTicket.category)} Hari</span>
           </div>
         </div>
 

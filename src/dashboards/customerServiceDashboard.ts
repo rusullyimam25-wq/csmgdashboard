@@ -260,6 +260,8 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
   let isMasterModalOpen = false;
   let masterFilterQuery = "";
   let isAddingNewMasterCustomer = false;
+  let isSlaModalOpen = false;
+  let slaFilterQuery = "";
 
   // Customer Self-Service Complaints Inbox State
   let submissionFilterStatus: "all" | "menunggu_verifikasi" | "dibuatkan_kasus" | "ditolak" = "all";
@@ -2116,6 +2118,9 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
             </div>
           </div>
           <div class="flex items-center gap-2">
+            <button type="button" id="btn-open-sla-modal-shortcut" class="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs">
+              <span>⏱️</span> Matriks SLA (47 Kasus)
+            </button>
             <button type="button" id="btn-open-master-modal-shortcut" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer">
               <span>👥</span> Master Pelanggan
             </button>
@@ -2249,13 +2254,18 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="block text-xs font-semibold text-slate-700">CASE Keluhan (Pilih Jenis Case) *</label>
-                <span id="cs-routing-badge" class="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
-                  Rekomendasi: ${DIVISIONS[newTargetDivision].name}
-                </span>
+                <div class="flex items-center gap-1.5">
+                  <span id="cs-sla-badge" class="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
+                    ⏱️ SLA: ${AETRA_CASE_CATEGORIES.find((c) => c.key === newCategory)?.slaDays || 3} Hari
+                  </span>
+                  <span id="cs-routing-badge" class="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                    ${DIVISIONS[newTargetDivision].shortName}
+                  </span>
+                </div>
               </div>
               <select id="cs-category" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-medium">
                 ${AETRA_CASE_CATEGORIES.map(
-                  (c) => `<option value="${c.key}" ${newCategory === c.key ? "selected" : ""}>[${c.key}] ${c.name}</option>`
+                  (c) => `<option value="${c.key}" ${newCategory === c.key ? "selected" : ""}>[${c.key}] ${c.name} • SLA: ${c.slaDays} Hari</option>`
                 ).join("")}
               </select>
             </div>
@@ -2354,6 +2364,14 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
         if (openMasterShortcutBtn) {
           openMasterShortcutBtn.onclick = () => {
             isMasterModalOpen = true;
+            render();
+          };
+        }
+
+        const openSlaShortcutBtn = document.getElementById("btn-open-sla-modal-shortcut") as HTMLButtonElement;
+        if (openSlaShortcutBtn) {
+          openSlaShortcutBtn.onclick = () => {
+            isSlaModalOpen = true;
             render();
           };
         }
@@ -2479,7 +2497,12 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
             newTargetDivision = getRecommendedDivision(val);
             const badge = document.getElementById("cs-routing-badge");
             if (badge) {
-              badge.innerText = `Rekomendasi: ${DIVISIONS[newTargetDivision].name}`;
+              badge.innerText = `${DIVISIONS[newTargetDivision].shortName}`;
+            }
+            const slaBadge = document.getElementById("cs-sla-badge");
+            if (slaBadge) {
+              const item = AETRA_CASE_CATEGORIES.find((c) => c.key === val);
+              slaBadge.innerText = `⏱️ SLA: ${item?.slaDays || 3} Hari`;
             }
           };
         }
@@ -3144,6 +3167,190 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       }, 0);
 
       wrapper.appendChild(photoOverlay);
+    }
+
+    // Modal Matriks Standar Layanan (SLA) Kasus PT Aetra Air Tangerang
+    if (isSlaModalOpen) {
+      const slaModalOverlay = document.createElement("div");
+      slaModalOverlay.style.cssText = "position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(4px); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;";
+
+      const query = slaFilterQuery.trim().toLowerCase();
+      const allCases = AETRA_CASE_CATEGORIES;
+      const filteredCases = query
+        ? allCases.filter(
+            (c) =>
+              c.key.toLowerCase().includes(query) ||
+              c.name.toLowerCase().includes(query) ||
+              DIVISIONS[c.defaultDiv]?.name.toLowerCase().includes(query) ||
+              String(c.slaDays).includes(query)
+          )
+        : allCases;
+
+      // Group into Left Column (first 24) and Right Column (remaining 23) if no filter, or split evenly
+      const midpoint = query ? Math.ceil(filteredCases.length / 2) : 24;
+      const leftCases = filteredCases.slice(0, midpoint);
+      const rightCases = filteredCases.slice(midpoint);
+
+      slaModalOverlay.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          
+          <!-- Modal Header (Orange banner matching user document) -->
+          <div class="p-4 md:p-5 border-b border-orange-700 bg-gradient-to-r from-orange-600 via-orange-500 to-amber-600 text-white flex items-center justify-between shrink-0 shadow-sm">
+            <div>
+              <div class="flex items-center gap-2.5">
+                <span class="text-2xl">⏱️</span>
+                <h3 class="text-base md:text-lg font-black tracking-wide uppercase m-0">Matriks Standar Layanan (SLA) Kasus PT Aetra</h3>
+                <span class="bg-white text-orange-700 text-[10.5px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                  47 CASE RESMI
+                </span>
+              </div>
+              <p class="text-xs text-orange-100 mt-1 m-0">
+                Waktu pengerjaan kasus (SLA dalam Hari Kerja) sesuai dengan standar operasional resmi PT Aetra Air Tangerang.
+              </p>
+            </div>
+            <button type="button" id="btn-close-sla-modal" class="text-orange-100 hover:text-white p-2 rounded-lg bg-black/20 hover:bg-black/40 transition cursor-pointer text-sm font-bold">
+              ✕
+            </button>
+          </div>
+
+          <!-- Search Filter Toolbar -->
+          <div class="p-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
+            <div class="relative flex-1 max-w-md">
+              <span class="absolute left-3 top-2.5 text-slate-400 text-xs">🔍</span>
+              <input
+                type="text"
+                id="sla-modal-filter-input"
+                placeholder="Cari kode CASE (KATM, KBSM, KBBP...) atau nama kasus..."
+                value="${slaFilterQuery}"
+                class="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
+              />
+            </div>
+            <div class="text-[11px] text-slate-500 font-medium">
+              Menampilkan <b>${filteredCases.length}</b> dari 47 Kasus
+            </div>
+          </div>
+
+          <!-- Table Container (2-Column Grid matching exactly the user image with Orange Headers) -->
+          <div class="flex-1 overflow-auto p-4 bg-slate-100/60">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              <!-- Kolom Kiri -->
+              <div class="bg-white border border-slate-300 rounded-lg overflow-hidden shadow-xs">
+                <table class="w-full text-xs text-left border-collapse">
+                  <thead>
+                    <tr style="background: #EA580C; color: #FFFFFF;" class="font-extrabold text-[11px] uppercase tracking-wider">
+                      <th class="py-2.5 px-3 border-r border-orange-500" colspan="2" style="text-align: center;">CASE</th>
+                      <th class="py-2.5 px-3 text-center" style="width: 70px;">SLA</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-200">
+                    ${leftCases.map((c) => `
+                      <tr class="hover:bg-orange-50/60 transition cursor-pointer btn-select-case-sla" data-key="${c.key}" title="Klik untuk pilih ${c.key}">
+                        <td class="py-2 px-3 font-mono font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap" style="width: 85px;">
+                          ${c.key}
+                        </td>
+                        <td class="py-2 px-3 text-slate-700 font-medium border-r border-slate-200">
+                          <div class="flex items-center justify-between gap-1">
+                            <span>${c.name}</span>
+                            <span class="text-[9.5px] px-1.5 py-0.2 rounded font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                              ${DIVISIONS[c.defaultDiv]?.shortName || ""}
+                            </span>
+                          </div>
+                        </td>
+                        <td class="py-2 px-3 text-center font-bold font-mono text-slate-900 bg-slate-50/50">
+                          ${c.slaDays}
+                        </td>
+                      </tr>
+                    `).join("")}
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Kolom Kanan -->
+              <div class="bg-white border border-slate-300 rounded-lg overflow-hidden shadow-xs">
+                <table class="w-full text-xs text-left border-collapse">
+                  <thead>
+                    <tr style="background: #EA580C; color: #FFFFFF;" class="font-extrabold text-[11px] uppercase tracking-wider">
+                      <th class="py-2.5 px-3 border-r border-orange-500" colspan="2" style="text-align: center;">CASE</th>
+                      <th class="py-2.5 px-3 text-center" style="width: 70px;">SLA</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-200">
+                    ${rightCases.map((c) => `
+                      <tr class="hover:bg-orange-50/60 transition cursor-pointer btn-select-case-sla" data-key="${c.key}" title="Klik untuk pilih ${c.key}">
+                        <td class="py-2 px-3 font-mono font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap" style="width: 85px;">
+                          ${c.key}
+                        </td>
+                        <td class="py-2 px-3 text-slate-700 font-medium border-r border-slate-200">
+                          <div class="flex items-center justify-between gap-1">
+                            <span>${c.name}</span>
+                            <span class="text-[9.5px] px-1.5 py-0.2 rounded font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                              ${DIVISIONS[c.defaultDiv]?.shortName || ""}
+                            </span>
+                          </div>
+                        </td>
+                        <td class="py-2 px-3 text-center font-bold font-mono text-slate-900 bg-slate-50/50">
+                          ${c.slaDays}
+                        </td>
+                      </tr>
+                    `).join("")}
+                  </tbody>
+                </table>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Modal Footer -->
+          <div class="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+            <span class="text-[11px] text-slate-500">
+              💡 <em>Klik pada salah satu baris kasus di atas untuk langsung memilihnya pada formulir input komplain.</em>
+            </span>
+            <button type="button" id="btn-close-sla-modal-bottom" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg text-xs font-bold transition cursor-pointer">
+              Tutup
+            </button>
+          </div>
+
+        </div>
+      `;
+
+      setTimeout(() => {
+        const close1 = document.getElementById("btn-close-sla-modal");
+        const close2 = document.getElementById("btn-close-sla-modal-bottom");
+        const close = () => {
+          isSlaModalOpen = false;
+          render();
+        };
+        if (close1) close1.onclick = close;
+        if (close2) close2.onclick = close;
+
+        const input = document.getElementById("sla-modal-filter-input") as HTMLInputElement;
+        if (input) {
+          input.oninput = (e: any) => {
+            slaFilterQuery = e.target.value;
+            render();
+          };
+        }
+
+        slaModalOverlay.onclick = (e) => {
+          if (e.target === slaModalOverlay) close();
+        };
+
+        const selectRows = slaModalOverlay.querySelectorAll(".btn-select-case-sla");
+        selectRows.forEach((row) => {
+          row.addEventListener("click", () => {
+            const key = row.getAttribute("data-key");
+            if (key) {
+              newCategory = key;
+              newTargetDivision = getRecommendedDivision(key);
+              isSlaModalOpen = false;
+              render();
+            }
+          });
+        });
+      }, 0);
+
+      wrapper.appendChild(slaModalOverlay);
     }
 
     container.appendChild(wrapper);

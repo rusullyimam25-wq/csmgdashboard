@@ -11,48 +11,22 @@ import {
   saveSingleTicket,
   generateCaseId,
 } from "../services/divisionTicketService";
-import { DivisionId, DIVISIONS, AETRA_CASE_CATEGORIES, getRecommendedDivision } from "../types/division";
+import {
+  DivisionId,
+  DIVISIONS,
+  AETRA_CASE_CATEGORIES,
+  getRecommendedDivision,
+  AETRA_CASE_SLA_DAYS,
+  getAetraCaseSlaDays,
+} from "../types/division";
 import * as XLSX from "xlsx";
 import { mountThirtyDayMovingAverageCard } from "./ThirtyDayMovingAverageCard";
 
-// SLA Rules map in days
-const SLA_RULES_MAP: Record<string, number> = {
-  KATM: 1,
-  KATMIND: 1,
-  KBSM: 3,
-  KBSMIND: 3,
-  KKMR: 3,
-  KKMRIND: 3,
-  KMDT: 5,
-  KMTA: 7,
-  KPMR: 4,
-  KPMRIND: 4,
-  KPPR: 6,
-  KLBC: 2,
-  KRPT: 7,
-  KPKT: 3,
-  KPCT: 5,
-  KPGP: 3,
-  BPPD: 14,
-  KATR: 2,
-  KATRIND: 2,
-  TERAREQ: 14,
-  KILL: 5,
-  KTR: 3,
-  KPAP: 3,
-  KPAT: 3,
-  KPPM: 3,
-  PPMI: 7,
-  TR09: 12,
-  TRO9: 12,
-};
+// SLA Rules map in days (Tabel Resmi SLA PT Aetra Air Tangerang)
+const SLA_RULES_MAP: Record<string, number> = AETRA_CASE_SLA_DAYS;
 
 function getSlaDays(category: string): number {
-  const cat = (category || "").toUpperCase().trim();
-  if (SLA_RULES_MAP[cat] !== undefined) return SLA_RULES_MAP[cat];
-  const stripped = cat.replace(/IND$/, "");
-  if (SLA_RULES_MAP[stripped] !== undefined) return SLA_RULES_MAP[stripped];
-  return 5;
+  return getAetraCaseSlaDays(category);
 }
 
 function inferCustomerType(t: UnifiedTicket): string {
