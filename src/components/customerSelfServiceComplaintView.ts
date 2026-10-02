@@ -17,27 +17,18 @@ import {
 } from "../services/divisionTicketService";
 import { publishWorkOrderNotification } from "../services/workOrderNotificationService";
 import { DivisionId, getRecommendedDivision } from "../types/division";
+import { saveSingleSubmission } from "../services/customerSubmissionService";
 
 // Operational areas in Tangerang
 const OPERATIONAL_AREAS = [
-  "Cikupa",
-  "Tangerang Kota",
-  "Cipondoh",
-  "Karawaci",
-  "Curug",
-  "Panongan",
-  "Pasar Kemis",
-  "Balaraja",
   "Sepatan",
-  "Tigaraksa",
-  "Cibodas",
-  "Batuceper",
-  "Benda",
-  "Neglasari",
-  "Periuk",
-  "Pinang",
-  "Larangan",
-  "Rajeg",
+  "Sepatan Timur",
+  "Pasar Kemis",
+  "Cikupa",
+  "Balaraja",
+  "Jayanti",
+  "Sindang Jaya",
+  "Sukamulya",
 ];
 
 // Issue categories tailored for customer language
@@ -1098,6 +1089,26 @@ Apa yang sedang dialami di rumah Anda saat ini?`,
           },
         ],
       };
+
+      // Save to customer submissions inbox queue for CS verification
+      saveSingleSubmission({
+        id: `SUBM-2026-${String(Date.now()).slice(-4)}`,
+        customerName: customerNameValue.trim(),
+        phone: phoneValue.trim(),
+        meterId: meterIdValue.trim(),
+        address: addressValue.trim(),
+        area: areaValue,
+        category: catInfo.code,
+        desc: descValue.trim() || `${catInfo.title} - ${catInfo.desc}`,
+        photo: photoDataUrl || null,
+        coords: coordsValue || undefined,
+        submittedAt: new Date().toISOString(),
+        status: "menunggu_verifikasi",
+        isUrgent: isUrgent,
+        source: "Web Portal Mandiri",
+        createdCaseId: newTicket.caseId,
+        createdTicketId: newTicket.id,
+      });
 
       // Save to storage
       await saveSingleTicket(newTicket);

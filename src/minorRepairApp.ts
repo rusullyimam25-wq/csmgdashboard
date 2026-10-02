@@ -340,17 +340,14 @@ export function initMinorRepairApp(rootElement: HTMLElement) {
   let lastSyncTime = new Date();
 
   const KNOWN_AREAS = [
+    "Sepatan",
+    "Sepatan Timur",
+    "Pasar Kemis",
     "Cikupa",
     "Balaraja",
-    "Pasar Kemis",
-    "Sepatan",
-    "Tigaraksa",
-    "Panongan",
-    "Rajeg",
-    "Curug",
-    "Legok",
-    "Kronjo",
-    "Kresek",
+    "Jayanti",
+    "Sindang Jaya",
+    "Sukamulya",
   ];
 
   function calcDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -368,28 +365,14 @@ export function initMinorRepairApp(rootElement: HTMLElement) {
   }
 
   const AREA_COORDINATES: Record<string, { lat: number; lng: number }> = {
+    Sepatan: { lat: -6.123, lng: 106.572 },
+    "Sepatan Timur": { lat: -6.135, lng: 106.589 },
+    "Pasar Kemis": { lat: -6.175, lng: 106.538 },
     Cikupa: { lat: -6.2285, lng: 106.518 },
     Balaraja: { lat: -6.2045, lng: 106.462 },
-    "Pasar Kemis": { lat: -6.175, lng: 106.538 },
-    Sepatan: { lat: -6.123, lng: 106.572 },
-    Tigaraksa: { lat: -6.261, lng: 106.485 },
-    Panongan: { lat: -6.252, lng: 106.521 },
-    Rajeg: { lat: -6.148, lng: 106.505 },
-    Curug: { lat: -6.241, lng: 106.554 },
-    Legok: { lat: -6.282, lng: 106.591 },
-    Kronjo: { lat: -6.085, lng: 106.412 },
-    Kresek: { lat: -6.128, lng: 106.398 },
-    Mauk: { lat: -6.061, lng: 106.517 },
-    Teluknaga: { lat: -6.101, lng: 106.638 },
-    Kosambi: { lat: -6.091, lng: 106.682 },
-    Pakuhaji: { lat: -6.072, lng: 106.592 },
-    Sukadiri: { lat: -6.098, lng: 106.552 },
-    Kemiri: { lat: -6.095, lng: 106.462 },
-    Jayanti: { lat: -6.195, lng: 106.415 },
-    Sukamulya: { lat: -6.187, lng: 106.452 },
-    "Sindang Jaya": { lat: -6.183, lng: 106.501 },
-    Solear: { lat: -6.289, lng: 106.438 },
-    Cisoka: { lat: -6.27, lng: 106.442 },
+    Jayanti: { lat: -6.2412, lng: 106.4182 },
+    "Sindang Jaya": { lat: -6.1823, lng: 106.5211 },
+    Sukamulya: { lat: -6.1412, lng: 106.4712 },
   };
 
   function getCoordsForTicket(item: ComplaintItem): { lat: number; lng: number } {

@@ -34,6 +34,15 @@ import {
   generateCcnbStandardCaseId,
   AetraCustomerRecord,
 } from "../services/customerMasterService";
+import {
+  getAllSubmissions,
+  saveSingleSubmission,
+  markSubmissionConverted,
+  rejectSubmission,
+  getPendingSubmissionsCount,
+  CustomerSubmission,
+} from "../services/customerSubmissionService";
+import { publishWorkOrderNotification } from "../services/workOrderNotificationService";
 
 function generateRandom10DigitCaseId(): string {
   return generateCcnbStandardCaseId();
@@ -108,8 +117,8 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
   let filterDivision: "all" | DivisionId | "unassigned" | "selesai" = "all";
   let searchQuery = "";
   let formOpen = true;
-  let activeCsTab: "analytics" | "moving_avg" | "csat_rating" | "operational" =
-    (localStorage.getItem("aetra_cs_active_view") as any) || "analytics";
+  let activeCsTab: "analytics" | "moving_avg" | "csat_rating" | "operational" | "customer_inbox" =
+    (localStorage.getItem("aetra_cs_active_view") as any) || "customer_inbox";
 
   // Date Range Timeline Filter State
   type DatePreset = "all" | "today" | "yesterday" | "last7" | "last30" | "thisMonth" | "custom";
@@ -252,7 +261,14 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
   let masterFilterQuery = "";
   let isAddingNewMasterCustomer = false;
 
-  const AREAS = ["Cikupa", "Panongan", "Pasar Kemis", "Balaraja", "Curug", "Tigaraksa", "Rajeg"];
+  // Customer Self-Service Complaints Inbox State
+  let submissionFilterStatus: "all" | "menunggu_verifikasi" | "dibuatkan_kasus" | "ditolak" = "all";
+  let submissionSearchQuery = "";
+  let submissionUrgentOnly = false;
+  let activeProcessingSubmissionId: string | null = null;
+  let previewingSubmissionPhotoUrl: string | null = null;
+
+  const AREAS = ["Sepatan", "Sepatan Timur", "Pasar Kemis", "Cikupa", "Balaraja", "Jayanti", "Sindang Jaya", "Sukamulya"];
 
   function refreshData() {
     tickets = loadAllUnifiedTickets();
@@ -276,6 +292,264 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     masterSearchResults = [];
     masterSearchQuery = "";
     render();
+  }
+
+  /**
+   * 1-Click Instant Conversion: Directly convert a customer submission to an official Case & Work Order
+   */
+  async function convertSubmissionDirectly(subm: CustomerSubmission) {
+    const catKey = subm.category || "KBSM";
+    const targetDivision = getRecommendedDivision(catKey);
+    const caseIdVal = generateRandom10DigitCaseId();
+    const year = new Date().getFullYear();
+    
+    // Find max number for unique WO ID
+    let maxNum = 46;
+    tickets.forEach((t) => {
+      const m = t.id.match(/WO-\d{4}-(\d+)/);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > maxNum) maxNum = n;
+      }
+    });
+    const newWoId = `WO-${year}-${String(maxNum + 1).padStart(3, "0")}`;
+
+    const newTicket: UnifiedTicket = {
+      id: newWoId,
+      caseId: caseIdVal,
+      customer: subm.customerName,
+      phone: subm.phone,
+      meterId: subm.meterId,
+      address: subm.address,
+      area: subm.area || "Cikupa",
+      category: catKey,
+      desc: subm.desc || `Laporan pengaduan mandiri warga via ${subm.source}`,
+      status: "baru",
+      urgent: subm.isUrgent,
+      coords: subm.coords || undefined,
+      photoBefore: subm.photo || undefined,
+      receivedAt: subm.submittedAt || new Date().toISOString(),
+      intakeChannel: subm.source === "WhatsApp Chatbot" ? "WhatsApp CS" : "Mobile App",
+      targetDivision,
+      distributionStatus: "distributed",
+      distributedAt: new Date().toISOString(),
+      distributedBy: "Putri Delia (CS Dispatcher)",
+      distributionNotes: `Laporan warga [${subm.id}] via ${subm.source} diverifikasi & langsung diterbitkan menjadi Kasus Resmi oleh CS.`,
+      comments: [
+        {
+          id: `cmt-cs-${Date.now()}`,
+          authorName: "Putri Delia (Customer Service)",
+          authorDivision: "customer_service",
+          authorRole: "CS Admin",
+          targetDepartment: DIVISIONS[targetDivision].name,
+          content: `Pengaduan mandiri pelanggan [${subm.id}] telah diverifikasi dan diterbitkan menjadi Work Order ${newWoId} (Case #${caseIdVal}). Dialirkan ke ${DIVISIONS[targetDivision].name}.`,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
+
+    // Save ticket to persistent store
+    await saveSingleTicket(newTicket);
+    tickets.unshift(newTicket);
+
+    // Mark submission as converted
+    markSubmissionConverted(subm.id, caseIdVal, newWoId, "Putri Delia (Customer Service)");
+
+    // Broadcast notification across tabs
+    publishWorkOrderNotification({
+      ticketId: newTicket.id,
+      caseId: newTicket.caseId,
+      customer: newTicket.customer,
+      address: newTicket.address,
+      officerName: "Petugas Lapangan",
+      officerDivision: newTicket.targetDivision,
+      targetDivision: newTicket.targetDivision,
+      oldStatus: "baru",
+      newStatus: "baru",
+      actionType: "new_report",
+      summary: `🚀 Kasus Baru Diterbitkan dari Laporan Pelanggan: ${newTicket.customer} [${newTicket.id}]`,
+      details: newTicket.desc,
+      urgent: newTicket.urgent,
+    });
+
+    // Notify user with modal dialog
+    // @ts-ignore
+    if (window.Swal) {
+      const rawPhone = (subm.phone || "").replace(/\D/g, "");
+      const phone = rawPhone.startsWith("0") ? "62" + rawPhone.slice(1) : rawPhone || "6281234567890";
+      const trackingUrl = `${window.location.origin}/lapor.html`;
+      const waMsg = `Yth. Bapak/Ibu ${subm.customerName}, pengaduan Anda (${subm.id}) telah diverifikasi oleh Customer Service Aetra Air Tangerang dan resmi diterbitkan dengan Case ID: #${caseIdVal} serta No. Work Order: ${newWoId}. Laporan telah didistribusikan ke tim ${DIVISIONS[targetDivision].name}. Lacak progres tiket Anda di: ${trackingUrl}`;
+      const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(waMsg)}`;
+
+      // @ts-ignore
+      window.Swal.fire({
+        icon: "success",
+        title: "Kasus Berhasil Diterbitkan! 🚀",
+        html: `
+          <div style="font-size:12.5px; line-height:1.6; color:#334155; text-align:left; background:#F8FAFC; padding:14px; border-radius:10px; border:1px solid #E2E8F0;">
+            <div><b>No. Pengaduan:</b> <span style="font-family:monospace; color:#64748B;">${subm.id}</span></div>
+            <div><b>Case ID Resmi:</b> <span style="font-family:monospace; color:#4F46E5; font-weight:800; font-size:14px;">#${caseIdVal}</span></div>
+            <div><b>No. Work Order:</b> <span style="font-family:monospace; color:#0284C7; font-weight:800; font-size:14px;">${newWoId}</span></div>
+            <div><b>Pelapor:</b> ${subm.customerName} (${subm.phone})</div>
+            <div><b>Wilayah:</b> ${subm.area}</div>
+            <div><b>Divisi Ditugaskan:</b> <b style="color:${DIVISIONS[targetDivision].badgeColor};">${DIVISIONS[targetDivision].name}</b></div>
+          </div>
+          <div style="margin-top:14px; display:flex; flex-direction:column; gap:8px;">
+            <a href="${waUrl}" target="_blank" rel="noopener noreferrer" style="background:#25D366; color:#FFFFFF; text-decoration:none; padding:10px 14px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+              <span>💬</span> <span>Kirim No. Kasus & Link Lacak ke WhatsApp Pelanggan</span>
+            </a>
+          </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: "👁️ Lihat di Antrean WO",
+        cancelButtonText: "Tetap di Kotak Masuk",
+        confirmButtonColor: "#0284C7",
+      }).then((res: any) => {
+        if (res.isConfirmed) {
+          activeCsTab = "operational";
+          localStorage.setItem("aetra_cs_active_view", "operational");
+        }
+        render();
+      });
+    } else {
+      render();
+    }
+  }
+
+  /**
+   * Pre-fill the CS intake form with customer submission data for manual review before publishing
+   */
+  function prefillSubmissionToForm(subm: CustomerSubmission) {
+    activeProcessingSubmissionId = subm.id;
+    newCaseId = generateRandom10DigitCaseId();
+    newCustomer = subm.customerName;
+    newPhone = subm.phone;
+    newMeterId = subm.meterId;
+    newAddress = subm.address;
+    newArea = subm.area || "Cikupa";
+    newCategory = subm.category || "KBSM";
+    newReceivedAt = getNowDateTimeLocal();
+    newDesc = subm.desc;
+    newCoords = subm.coords || "";
+    newUrgent = subm.isUrgent;
+    newChannel = subm.source === "WhatsApp Chatbot" ? "WhatsApp CS" : "Mobile App";
+    newTargetDivision = getRecommendedDivision(subm.category || "KBSM");
+    
+    // Switch to operational view and make sure form is open
+    activeCsTab = "operational";
+    formOpen = true;
+    localStorage.setItem("aetra_cs_active_view", "operational");
+    render();
+
+    setTimeout(() => {
+      const formCard = document.getElementById("cs-intake-form-card");
+      if (formCard) {
+        formCard.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 100);
+  }
+
+  /**
+   * Reject / mark a customer submission as duplicate/invalid
+   */
+  function handleRejectSubmission(subm: CustomerSubmission) {
+    // @ts-ignore
+    if (!window.Swal) {
+      const reason = prompt("Masukkan alasan penolakan / duplikasi:");
+      if (reason) {
+        rejectSubmission(subm.id, reason, "Putri Delia (Customer Service)");
+        render();
+      }
+      return;
+    }
+
+    // @ts-ignore
+    window.Swal.fire({
+      title: `Tolak / Tandai Duplikat: ${subm.id}`,
+      html: `
+        <div style="text-align:left; font-size:12px; color:#334155; display:flex; flex-direction:column; gap:8px;">
+          <div><b>Pelapor:</b> ${subm.customerName} (${subm.phone})</div>
+          <div><b>Keluhan:</b> [${subm.category}] ${subm.desc}</div>
+          <div style="margin-top:6px;">
+            <label style="font-weight:700; display:block; margin-bottom:4px;">Pilih Alasan Penolakan / Keterangan:</label>
+            <select id="swal-reject-preset" style="width:100%; padding:8px; border-radius:6px; border:1px solid #CBD5E1; font-size:12px; margin-bottom:8px;">
+              <option value="Duplikat - Sudah pernah dilaporkan dan sedang ditangani">Duplikat - Sudah pernah dilaporkan dan sedang ditangani</option>
+              <option value="Bukan Wilayah Konsesi PT Aetra Air Tangerang">Bukan Wilayah Konsesi PT Aetra Air Tangerang</option>
+              <option value="Instalasi Pipa Dalam Rumah (Persil Pelanggan Mandiri)">Instalasi Pipa Dalam Rumah (Persil Pelanggan Mandiri)</option>
+              <option value="Nomor Sambungan / Data Pelanggan Tidak Ditemukan">Nomor Sambungan / Data Pelanggan Tidak Ditemukan</option>
+              <option value="Lainnya">Lainnya (Tulis alasan di bawah)</option>
+            </select>
+            <textarea id="swal-reject-reason" style="width:100%; padding:8px; border-radius:6px; border:1px solid #CBD5E1; min-height:60px; font-size:12px;" placeholder="Catatan alasan..."></textarea>
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: "✕ Konfirmasi Tolak",
+      cancelButtonText: "Batal",
+      confirmButtonColor: "#DC2626",
+      didOpen: () => {
+        const presetEl = document.getElementById("swal-reject-preset") as HTMLSelectElement;
+        const textEl = document.getElementById("swal-reject-reason") as HTMLTextAreaElement;
+        if (presetEl && textEl) {
+          textEl.value = presetEl.value;
+          presetEl.onchange = () => {
+            if (presetEl.value !== "Lainnya") {
+              textEl.value = presetEl.value;
+            } else {
+              textEl.value = "";
+              textEl.focus();
+            }
+          };
+        }
+      },
+      preConfirm: () => {
+        const textEl = document.getElementById("swal-reject-reason") as HTMLTextAreaElement;
+        const val = textEl?.value.trim();
+        if (!val) {
+          // @ts-ignore
+          window.Swal.showValidationMessage("Alasan penolakan wajib diisi");
+          return false;
+        }
+        return val;
+      },
+    }).then((res: any) => {
+      if (res.isConfirmed && res.value) {
+        rejectSubmission(subm.id, res.value, "Putri Delia (Customer Service)");
+        render();
+      }
+    });
+  }
+
+  /**
+   * Restore a rejected submission back to unverified queue
+   */
+  function handleRestoreSubmission(subm: CustomerSubmission) {
+    const all = getAllSubmissions();
+    const idx = all.findIndex((s) => s.id === subm.id);
+    if (idx >= 0) {
+      all[idx].status = "menunggu_verifikasi";
+      all[idx].rejectionReason = undefined;
+      all[idx].verifiedBy = undefined;
+      all[idx].verifiedAt = undefined;
+      saveSingleSubmission(all[idx]);
+      render();
+    }
+  }
+
+  /**
+   * Open direct WhatsApp chat with customer regarding their complaint
+   */
+  function openChatCustomerWhatsApp(subm: CustomerSubmission) {
+    const rawPhone = (subm.phone || "").replace(/\D/g, "");
+    const phone = rawPhone.startsWith("0") ? "62" + rawPhone.slice(1) : rawPhone || "6281234567890";
+    const statusText =
+      subm.status === "dibuatkan_kasus"
+        ? `Laporan Anda telah diterbitkan dengan Case ID: #${subm.createdCaseId || "-"} dan WO: ${subm.createdTicketId || "-"}`
+        : "Laporan pengaduan mandiri Anda saat ini sedang dalam proses verifikasi oleh tim Customer Service.";
+    
+    const message = `Halo Bapak/Ibu ${subm.customerName}, kami dari Layanan Pelanggan PT Aetra Air Tangerang menindaklanjuti pengaduan mandiri Anda (${subm.id}) mengenai [${subm.category}]. ${statusText}. Ada yang dapat kami bantu lebih lanjut?`;
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, "_blank");
   }
 
   function fillQuickSampleData() {
@@ -366,6 +640,11 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
 
     saveSingleTicket(newTicket);
     tickets.unshift(newTicket);
+
+    if (activeProcessingSubmissionId) {
+      markSubmissionConverted(activeProcessingSubmissionId, caseIdVal, newTicket.id, "Putri Delia (Customer Service)");
+      activeProcessingSubmissionId = null;
+    }
 
     // Reset fields for fresh entry
     newCaseId = generateRandom10DigitCaseId();
@@ -550,14 +829,82 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       box-shadow: 0 1px 4px rgba(0,0,0,0.04);
     `;
 
+    const allSubms = getAllSubmissions();
+    const pendingSubmsCount = getPendingSubmissionsCount();
+
     const isAnalytics = activeCsTab === "analytics";
     const isMovingAvg = activeCsTab === "moving_avg";
     const isCsat = activeCsTab === "csat_rating";
     const isOperational = activeCsTab === "operational";
+    const isInbox = activeCsTab === "customer_inbox";
 
     const leftTabGroup = document.createElement("div");
     leftTabGroup.style.cssText = "display: flex; align-items: center; gap: 8px; flex-wrap: wrap;";
 
+    // 1. Tab Kotak Masuk Pengaduan Warga (Self-Service Inbox)
+    const inboxTabBtn = document.createElement("button");
+    inboxTabBtn.type = "button";
+    inboxTabBtn.style.cssText = `
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 800;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: ${isInbox ? "1px solid #D97706" : "1px solid #CBD5E1"};
+      background: ${isInbox ? "linear-gradient(135deg, #78350F 0%, #451A03 100%)" : "#FFFFFF"};
+      color: ${isInbox ? "#FDE68A" : "#1E293B"};
+      box-shadow: ${isInbox ? "0 2px 8px rgba(217,119,6,0.35)" : "none"};
+      transition: all 0.15s ease;
+      position: relative;
+    `;
+    inboxTabBtn.innerHTML = `
+      <span style="font-size: 14px;">📥</span>
+      <span>Pengaduan Masuk Warga</span>
+      <span style="background: ${pendingSubmsCount > 0 ? "#DC2626" : isInbox ? "#92400E" : "#F1F5F9"}; color: ${pendingSubmsCount > 0 ? "#FFFFFF" : isInbox ? "#FEF3C7" : "#475569"}; font-size: 10px; font-weight: 900; padding: 2px 7px; border-radius: 10px; ${pendingSubmsCount > 0 ? 'box-shadow: 0 0 8px rgba(220,38,38,0.7);' : ''}">
+        ${pendingSubmsCount > 0 ? `${pendingSubmsCount} Baru` : `${allSubms.length}`}
+      </span>
+    `;
+    inboxTabBtn.onclick = () => {
+      activeCsTab = "customer_inbox";
+      localStorage.setItem("aetra_cs_active_view", "customer_inbox");
+      render();
+    };
+
+    // 2. Tab Operasional Antrean Tiket
+    const operationalTabBtn = document.createElement("button");
+    operationalTabBtn.type = "button";
+    operationalTabBtn.style.cssText = `
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 800;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: ${isOperational ? "1px solid #0369A1" : "1px solid #E2E8F0"};
+      background: ${isOperational ? "#0284C7" : "#F8FAFC"};
+      color: ${isOperational ? "#FFFFFF" : "#475569"};
+      box-shadow: ${isOperational ? "0 2px 8px rgba(2,132,199,0.3)" : "none"};
+      transition: all 0.15s ease;
+    `;
+    operationalTabBtn.innerHTML = `
+      <span style="font-size: 14px;">📋</span>
+      <span>Antrean Kasus & Work Order</span>
+      <span style="background: ${isOperational ? "rgba(255,255,255,0.25)" : "#E2E8F0"}; color: ${isOperational ? "#FFFFFF" : "#64748B"}; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 10px;">
+        ${dateFilterPreset === "all" ? `${totalTickets}` : `${activeDateCount}`}
+      </span>
+    `;
+    operationalTabBtn.onclick = () => {
+      activeCsTab = "operational";
+      localStorage.setItem("aetra_cs_active_view", "operational");
+      render();
+    };
+
+    // 3. Tab Executive Analytics BI
     const analyticsTabBtn = document.createElement("button");
     analyticsTabBtn.type = "button";
     analyticsTabBtn.style.cssText = `
@@ -578,9 +925,6 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     analyticsTabBtn.innerHTML = `
       <span style="font-size: 14px;">📊</span>
       <span>Executive Analytics BI</span>
-      <span style="background: ${isAnalytics ? "#0284C7" : "#E2E8F0"}; color: ${isAnalytics ? "#FFFFFF" : "#64748B"}; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 10px;">
-        27.959 Tiket
-      </span>
     `;
     analyticsTabBtn.onclick = () => {
       activeCsTab = "analytics";
@@ -588,6 +932,7 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       render();
     };
 
+    // 4. Tab 30-Day Moving Average
     const movingAvgTabBtn = document.createElement("button");
     movingAvgTabBtn.type = "button";
     movingAvgTabBtn.style.cssText = `
@@ -607,10 +952,7 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     `;
     movingAvgTabBtn.innerHTML = `
       <span style="font-size: 14px;">📈</span>
-      <span>30-Day Moving Avg Trend</span>
-      <span style="background: ${isMovingAvg ? "#0284C7" : "#E2E8F0"}; color: ${isMovingAvg ? "#FFFFFF" : "#64748B"}; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 10px;">
-        Recharts
-      </span>
+      <span>30-Day Moving Avg</span>
     `;
     movingAvgTabBtn.onclick = () => {
       activeCsTab = "moving_avg";
@@ -618,6 +960,7 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       render();
     };
 
+    // 5. Tab CSAT & Rating
     const csatTabBtn = document.createElement("button");
     csatTabBtn.type = "button";
     csatTabBtn.style.cssText = `
@@ -637,10 +980,7 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     `;
     csatTabBtn.innerHTML = `
       <span style="font-size: 14px;">⭐</span>
-      <span>Rating Petugas & CSAT</span>
-      <span style="background: ${isCsat ? "#F59E0B" : "#FEF3C7"}; color: ${isCsat ? "#FFFFFF" : "#B45309"}; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 10px;">
-        Radial & Bar
-      </span>
+      <span>Rating CSAT</span>
     `;
     csatTabBtn.onclick = () => {
       activeCsTab = "csat_rating";
@@ -648,46 +988,17 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       render();
     };
 
-    const operationalTabBtn = document.createElement("button");
-    operationalTabBtn.type = "button";
-    operationalTabBtn.style.cssText = `
-      padding: 8px 16px;
-      font-size: 12px;
-      font-weight: 800;
-      border-radius: 8px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      border: ${isOperational ? "1px solid #0369A1" : "1px solid #E2E8F0"};
-      background: ${isOperational ? "#0284C7" : "#F8FAFC"};
-      color: ${isOperational ? "#FFFFFF" : "#475569"};
-      box-shadow: ${isOperational ? "0 2px 8px rgba(2,132,199,0.3)" : "none"};
-      transition: all 0.15s ease;
-    `;
-    operationalTabBtn.innerHTML = `
-      <span style="font-size: 14px;">📋</span>
-      <span>Input & Antrean Distribusi Tiket</span>
-      <span style="background: ${isOperational ? "rgba(255,255,255,0.25)" : "#E2E8F0"}; color: ${isOperational ? "#FFFFFF" : "#64748B"}; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 10px;">
-        ${dateFilterPreset === "all" ? `${totalTickets} Tiket` : `${activeDateCount} / ${totalTickets} Tiket`}
-      </span>
-    `;
-    operationalTabBtn.onclick = () => {
-      activeCsTab = "operational";
-      localStorage.setItem("aetra_cs_active_view", "operational");
-      render();
-    };
-
+    leftTabGroup.appendChild(inboxTabBtn);
+    leftTabGroup.appendChild(operationalTabBtn);
     leftTabGroup.appendChild(analyticsTabBtn);
     leftTabGroup.appendChild(movingAvgTabBtn);
     leftTabGroup.appendChild(csatTabBtn);
-    leftTabGroup.appendChild(operationalTabBtn);
 
     const rightTabInfo = document.createElement("div");
     rightTabInfo.style.cssText = "display: flex; align-items: center; gap: 8px; flex-wrap: wrap;";
     rightTabInfo.innerHTML = `
       ${
-        dateFilterPreset !== "all"
+        dateFilterPreset !== "all" && isOperational
           ? `<div style="font-size: 11px; font-weight: 700; color: #0284C7; background: #F0F9FF; border: 1px solid #BAE6FD; padding: 3px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px;">
               <span>🗓️ Filter:</span>
               <span style="font-weight: 800;">${getActiveTimelineLabel()}</span>
@@ -695,12 +1006,12 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
           : ""
       }
       <span style="font-size: 11px; color: #64748B;">Tampilan Aktif:</span>
-      <span style="font-size: 11px; font-weight: 800; color: ${isAnalytics || isMovingAvg ? "#0284C7" : isCsat ? "#D97706" : "#059669"}; background: ${isAnalytics || isMovingAvg ? "#F0F9FF" : isCsat ? "#FEF3C7" : "#ECFDF5"}; border: 1px solid ${isAnalytics || isMovingAvg ? "#BAE6FD" : isCsat ? "#FDE68A" : "#A7F3D0"}; padding: 3px 8px; border-radius: 6px;">
-        ${isAnalytics ? "📊 Executive BI View" : isMovingAvg ? "📈 30-Day Moving Avg Trend" : isCsat ? "⭐ Kepuasan CSAT & Rating Petugas" : "📋 Operasional Loket & CS"}
+      <span style="font-size: 11px; font-weight: 800; color: ${isInbox ? "#B45309" : isAnalytics || isMovingAvg ? "#0284C7" : isCsat ? "#D97706" : "#059669"}; background: ${isInbox ? "#FEF3C7" : isAnalytics || isMovingAvg ? "#F0F9FF" : isCsat ? "#FEF3C7" : "#ECFDF5"}; border: 1px solid ${isInbox ? "#FDE68A" : isAnalytics || isMovingAvg ? "#BAE6FD" : isCsat ? "#FDE68A" : "#A7F3D0"}; padding: 3px 8px; border-radius: 6px;">
+        ${isInbox ? "📥 Kotak Masuk Pengaduan Warga" : isAnalytics ? "📊 Executive BI View" : isMovingAvg ? "📈 30-Day Moving Avg Trend" : isCsat ? "⭐ Kepuasan CSAT & Rating Petugas" : "📋 Operasional Loket & CS"}
       </span>
       <a href="/lapor.html" target="_blank" rel="noopener noreferrer" style="font-size: 11px; font-weight: 800; color: #047857; background: #ECFDF5; border: 1px solid #A7F3D0; padding: 4px 10px; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;" title="Buka Link Pengaduan Mandiri Khusus Pelanggan Terpisah">
         <span>🌐</span>
-        <span>Link Pengaduan Warga</span>
+        <span>Portal Warga</span>
         <span>↗</span>
       </a>
       <button id="btn-copy-cs-portal-link" type="button" style="font-size: 11px; font-weight: 700; color: #0369A1; background: #F0F9FF; border: 1px solid #BAE6FD; padding: 4px 9px; border-radius: 6px; cursor: pointer;" title="Salin link /lapor.html untuk dikirim ke chat WhatsApp pelanggan">
@@ -720,7 +1031,7 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
               (window as any).Swal.fire({
                 icon: "success",
                 title: "Link Pengaduan Pelanggan Disalin! 🌐",
-                html: `<div style="font-size:13px; margin-top:6px;">Link pengaduan mandiri terpisah untuk masyarakat/pelanggan:<br><b style="color:#059669;">${laporUrl}</b><br><br>Halaman ini terisolasi murni untuk pengaduan & pelacakan warga (tidak ada akses dashboard ataupun HP petugas).</div>`,
+                html: `<div style="font-size:13px; margin-top:6px;">Link pengaduan mandiri terpisah untuk masyarakat/pelanggan:<br><b style="color:#059669;">${laporUrl}</b><br><br>Halaman ini terisolasi murni untuk pengaduan & pelacakan warga.</div>`,
                 timer: 4000,
                 confirmButtonColor: "#059669",
               });
@@ -734,7 +1045,629 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     viewTabNav.appendChild(rightTabInfo);
     wrapper.appendChild(viewTabNav);
 
-    // If Executive Analytics is active, render executive BI dashboard
+    // =========================================================================
+    // DEDICATED VIEW 1: Kotak Masuk Pengaduan Pelanggan (Self-Service Inbox)
+    // =========================================================================
+    if (activeCsTab === "customer_inbox") {
+      const inboxContainer = document.createElement("div");
+      inboxContainer.style.cssText = "display: flex; flex-direction: column; gap: 16px;";
+
+      const totalSubm = allSubms.length;
+      const convertedCount = allSubms.filter((s) => s.status === "dibuatkan_kasus").length;
+      const rejectedCount = allSubms.filter((s) => s.status === "ditolak").length;
+      const urgentCount = allSubms.filter((s) => s.isUrgent && s.status === "menunggu_verifikasi").length;
+
+      // 1. KPI Stats Summary Cards
+      const kpiGrid = document.createElement("div");
+      kpiGrid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px;";
+
+      const kpis = [
+        {
+          title: "Menunggu Verifikasi CS",
+          count: pendingSubmsCount,
+          sub: urgentCount > 0 ? `🚨 ${urgentCount} laporan darurat!` : "antrean siap dibuatkan kasus",
+          icon: "⏳",
+          bg: "#FFFBEB",
+          color: "#D97706",
+          border: "#FDE68A",
+          highlight: pendingSubmsCount > 0,
+        },
+        {
+          title: "Sudah Diterbitkan Kasus & WO",
+          count: convertedCount,
+          sub: "resmi dialirkan ke divisi teknis",
+          icon: "🚀",
+          bg: "#ECFDF5",
+          color: "#059669",
+          border: "#A7F3D0",
+        },
+        {
+          title: "Ditolak / Duplikat",
+          count: rejectedCount,
+          sub: "laporan tidak valid / ganda",
+          icon: "❌",
+          bg: "#FEF2F2",
+          color: "#DC2626",
+          border: "#FECACA",
+        },
+        {
+          title: "Total Laporan Warga",
+          count: totalSubm,
+          sub: "seluruh kanal portal mandiri & bot",
+          icon: "📬",
+          bg: "#F0F9FF",
+          color: "#0284C7",
+          border: "#BAE6FD",
+        },
+      ];
+
+      kpis.forEach((k) => {
+        const card = document.createElement("div");
+        card.style.cssText = `
+          background: #FFFFFF;
+          border: 1px solid ${k.border};
+          border-radius: 12px;
+          padding: 14px 16px;
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          box-shadow: ${k.highlight ? "0 4px 14px rgba(217,119,6,0.18)" : "0 1px 3px rgba(0,0,0,0.03)"};
+        `;
+        card.innerHTML = `
+          <div style="width: 44px; height: 44px; border-radius: 12px; background: ${k.bg}; color: ${k.color}; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;">
+            ${k.icon}
+          </div>
+          <div style="min-width: 0;">
+            <div style="font-size: 11px; font-weight: 700; color: #64748B;">${k.title}</div>
+            <div style="font-size: 22px; font-weight: 900; color: #0F172A; line-height: 1.2;">${k.count}</div>
+            <div style="font-size: 10.5px; font-weight: 600; color: ${k.color}; margin-top: 2px;">${k.sub}</div>
+          </div>
+        `;
+        kpiGrid.appendChild(card);
+      });
+      inboxContainer.appendChild(kpiGrid);
+
+      // 2. Toolbar: Filter Status, Search, Urgent Filter & External Actions
+      const toolbar = document.createElement("div");
+      toolbar.style.cssText = `
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 14px;
+        padding: 14px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+      `;
+
+      const topRow = document.createElement("div");
+      topRow.style.cssText = "display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;";
+      topRow.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 38px; height: 38px; border-radius: 10px; background: #FEF3C7; border: 1px solid #FDE68A; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #D97706;">
+            📥
+          </div>
+          <div>
+            <div style="font-size: 13.5px; font-weight: 800; color: #0F172A; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span>Kotak Masuk Pengaduan Pelanggan (Tempat Khusus CS)</span>
+              <span style="font-size: 10.5px; font-weight: 800; background: #0284C7; color: #FFFFFF; padding: 2px 8px; border-radius: 10px;">
+                Pengganti CCnB Standalone
+              </span>
+            </div>
+            <div style="font-size: 11px; color: #64748B; margin-top: 1px;">
+              Admin CS dapat langsung meninjau komplain warga dan menekan tombol <b>"Buat Kasus Langsung"</b> untuk menerbitkan Work Order secara instan.
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <button id="btn-inbox-add-simulation" type="button" style="font-size: 11.5px; font-weight: 700; color: #0284C7; background: #F0F9FF; border: 1px solid #BAE6FD; padding: 6px 12px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            <span>➕ Simulasi Laporan Baru</span>
+          </button>
+          <button id="btn-inbox-refresh" type="button" style="font-size: 11.5px; font-weight: 700; color: #475569; background: #F8FAFC; border: 1px solid #CBD5E1; padding: 6px 12px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            <span>🔄 Segarkan</span>
+          </button>
+        </div>
+      `;
+      toolbar.appendChild(topRow);
+
+      // Filter Buttons & Search Input Row
+      const filterRow = document.createElement("div");
+      filterRow.style.cssText = "display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;";
+
+      const filterTabs = document.createElement("div");
+      filterTabs.style.cssText = "display: flex; align-items: center; gap: 6px; flex-wrap: wrap;";
+
+      const statusOpts: { id: typeof submissionFilterStatus; label: string; count: number; color: string }[] = [
+        { id: "all", label: "Semua", count: totalSubm, color: "#0284C7" },
+        { id: "menunggu_verifikasi", label: "⏳ Menunggu Verifikasi", count: pendingSubmsCount, color: "#D97706" },
+        { id: "dibuatkan_kasus", label: "✅ Sudah Jadi Kasus", count: convertedCount, color: "#059669" },
+        { id: "ditolak", label: "❌ Ditolak", count: rejectedCount, color: "#DC2626" },
+      ];
+
+      statusOpts.forEach((opt) => {
+        const isAct = submissionFilterStatus === opt.id;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.style.cssText = `
+          padding: 6px 12px;
+          font-size: 11.5px;
+          font-weight: 700;
+          border-radius: 8px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          border: ${isAct ? `1px solid ${opt.color}` : "1px solid #CBD5E1"};
+          background: ${isAct ? opt.color : "#FFFFFF"};
+          color: ${isAct ? "#FFFFFF" : "#334155"};
+          transition: all 0.15s ease;
+        `;
+        btn.innerHTML = `
+          <span>${opt.label}</span>
+          <span style="background: ${isAct ? "rgba(255,255,255,0.25)" : "#F1F5F9"}; color: ${isAct ? "#FFFFFF" : "#475569"}; font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 8px;">
+            ${opt.count}
+          </span>
+        `;
+        btn.onclick = () => {
+          submissionFilterStatus = opt.id;
+          render();
+        };
+        filterTabs.appendChild(btn);
+      });
+
+      const urgentToggle = document.createElement("button");
+      urgentToggle.type = "button";
+      urgentToggle.style.cssText = `
+        padding: 6px 12px;
+        font-size: 11.5px;
+        font-weight: 700;
+        border-radius: 8px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: ${submissionUrgentOnly ? "1px solid #DC2626" : "1px solid #CBD5E1"};
+        background: ${submissionUrgentOnly ? "#DC2626" : "#FFFFFF"};
+        color: ${submissionUrgentOnly ? "#FFFFFF" : "#DC2626"};
+        transition: all 0.15s ease;
+      `;
+      urgentToggle.innerHTML = `
+        <span>🚨 Hanya Mendesak / Urgent</span>
+        ${urgentCount > 0 ? `<span style="background:${submissionUrgentOnly ? 'rgba(255,255,255,0.25)' : '#FEE2E2'}; color:${submissionUrgentOnly ? '#FFF' : '#DC2626'}; font-size:10px; font-weight:800; padding:1px 5px; border-radius:8px;">${urgentCount}</span>` : ''}
+      `;
+      urgentToggle.onclick = () => {
+        submissionUrgentOnly = !submissionUrgentOnly;
+        render();
+      };
+      filterTabs.appendChild(urgentToggle);
+
+      const searchBox = document.createElement("div");
+      searchBox.style.cssText = "display: flex; align-items: center; gap: 6px; flex: 1; min-width: 260px; max-width: 400px;";
+      searchBox.innerHTML = `
+        <input 
+          type="text" 
+          id="inbox-search-input" 
+          placeholder="Cari nama, HP, meter, alamat, masalah, ID..." 
+          value="${submissionSearchQuery}"
+          style="width: 100%; padding: 7px 12px; font-size: 12px; border-radius: 8px; border: 1px solid #CBD5E1; color: #0F172A; background: #FFFFFF; font-family: inherit;"
+        />
+      `;
+
+      filterRow.appendChild(filterTabs);
+      filterRow.appendChild(searchBox);
+      toolbar.appendChild(filterRow);
+      inboxContainer.appendChild(toolbar);
+
+      // 3. Filter the submissions
+      const filteredSubms = allSubms.filter((s) => {
+        if (submissionFilterStatus !== "all" && s.status !== submissionFilterStatus) {
+          return false;
+        }
+        if (submissionUrgentOnly && !s.isUrgent) {
+          return false;
+        }
+        if (submissionSearchQuery.trim()) {
+          const q = submissionSearchQuery.toLowerCase();
+          const match =
+            s.id.toLowerCase().includes(q) ||
+            s.customerName.toLowerCase().includes(q) ||
+            s.phone.toLowerCase().includes(q) ||
+            s.meterId.toLowerCase().includes(q) ||
+            s.address.toLowerCase().includes(q) ||
+            s.area.toLowerCase().includes(q) ||
+            s.category.toLowerCase().includes(q) ||
+            s.desc.toLowerCase().includes(q) ||
+            (s.createdCaseId && s.createdCaseId.toLowerCase().includes(q)) ||
+            (s.createdTicketId && s.createdTicketId.toLowerCase().includes(q));
+          if (!match) return false;
+        }
+        return true;
+      });
+
+      // 4. Submissions Feed Cards
+      const feedContainer = document.createElement("div");
+      feedContainer.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
+
+      if (filteredSubms.length === 0) {
+        const emptyCard = document.createElement("div");
+        emptyCard.style.cssText = "background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 14px; padding: 40px 20px; text-align: center;";
+        emptyCard.innerHTML = `
+          <div style="font-size: 36px; margin-bottom: 8px;">📭</div>
+          <div style="font-size: 14px; font-weight: 800; color: #0F172A;">Tidak Ada Pengaduan Pelanggan</div>
+          <div style="font-size: 12px; color: #64748B; margin-top: 4px; max-width: 460px; margin-left: auto; margin-right: auto;">
+            ${submissionFilterStatus !== "all" || submissionSearchQuery || submissionUrgentOnly ? "Tidak ada laporan yang cocok dengan filter pencarian aktif." : "Belum ada pengaduan baru dari warga melalui portal mandiri."}
+          </div>
+          <div style="margin-top: 16px; display: flex; justify-content: center; gap: 8px;">
+            <button id="btn-inbox-reset-filter" style="padding: 7px 14px; font-size: 12px; font-weight: 700; background: #0284C7; color: #FFFFFF; border: none; border-radius: 8px; cursor: pointer;">
+              Reset Filter
+            </button>
+          </div>
+        `;
+        feedContainer.appendChild(emptyCard);
+      } else {
+        filteredSubms.forEach((subm) => {
+          const isPending = subm.status === "menunggu_verifikasi";
+          const isConverted = subm.status === "dibuatkan_kasus";
+          const isRejected = subm.status === "ditolak";
+          const catMeta = AETRA_CASE_CATEGORIES.find((c) => c.key === subm.category);
+          const targetDiv = getRecommendedDivision(subm.category);
+          const divMeta = DIVISIONS[targetDiv];
+
+          // Format time
+          const timeStr = formatTicketDateTime(subm.submittedAt);
+
+          const card = document.createElement("div");
+          card.style.cssText = `
+            background: #FFFFFF;
+            border: ${isPending ? "1.5px solid #F59E0B" : isConverted ? "1.5px solid #10B981" : "1px solid #E2E8F0"};
+            border-radius: 14px;
+            padding: 16px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: ${isPending ? "0 4px 12px rgba(245,158,11,0.12)" : "0 1px 3px rgba(0,0,0,0.03)"};
+            transition: all 0.15s ease;
+          `;
+
+          card.innerHTML = `
+            <!-- Top Card Header -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #F1F5F9; padding-bottom: 10px;">
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span style="font-family: monospace; font-size: 12.5px; font-weight: 900; color: #0284C7; background: #F0F9FF; border: 1px solid #BAE6FD; padding: 2px 8px; border-radius: 6px;">
+                  ${subm.id}
+                </span>
+                <span style="font-size: 11px; font-weight: 700; color: #475569; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 2px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px;">
+                  <span>🌐</span> <span>${subm.source}</span>
+                </span>
+                <span style="font-size: 11px; color: #64748B;">
+                  🕒 ${timeStr}
+                </span>
+                ${
+                  subm.isUrgent
+                    ? `<span style="background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 10px; display: inline-flex; align-items: center; gap: 4px;">
+                        🚨 DARURAT / MENDESAK
+                      </span>`
+                    : ""
+                }
+              </div>
+
+              <div>
+                ${
+                  isPending
+                    ? `<span style="background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 12px; display: inline-flex; align-items: center; gap: 5px;">
+                        <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#F59E0B; animation: pulse 1.5s infinite;"></span>
+                        <span>MENUNGGU VERIFIKASI CS</span>
+                      </span>`
+                    : isConverted
+                    ? `<span style="background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 12px; display: inline-flex; align-items: center; gap: 5px;">
+                        <span>✓</span>
+                        <span>KASUS RESMI DITERBITKAN</span>
+                      </span>`
+                    : `<span style="background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 12px; display: inline-flex; align-items: center; gap: 5px;">
+                        <span>✕</span>
+                        <span>DITOLAK / DUPLIKAT</span>
+                      </span>`
+                }
+              </div>
+            </div>
+
+            <!-- Middle Card Content Grid -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; font-size: 12px;">
+              
+              <!-- Column 1: Customer Identity & Contact -->
+              <div style="display: flex; flex-direction: column; gap: 6px; background: #F8FAFC; padding: 12px; border-radius: 10px; border: 1px solid #E2E8F0;">
+                <div style="font-size: 11px; font-weight: 800; color: #64748B; text-transform: uppercase;">
+                  👤 Data Pelapor & Lokasi
+                </div>
+                <div style="font-size: 14px; font-weight: 800; color: #0F172A;">
+                  ${subm.customerName}
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  <span style="font-weight: 700; color: #0284C7;">📞 ${subm.phone}</span>
+                  <button class="btn-subm-wa-chat" data-id="${subm.id}" style="padding: 2px 8px; font-size: 10.5px; font-weight: 800; background: #25D366; color: #FFF; border: none; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
+                    <span>💬 Chat WA</span>
+                  </button>
+                </div>
+                <div style="color: #475569;">
+                  <b>No. Sambungan / Meter:</b> <span style="font-family: monospace; font-weight: 700; color: #1E293B;">${subm.meterId || "-"}</span>
+                </div>
+                <div style="color: #475569;">
+                  <b>Alamat:</b> ${subm.address} (<span style="font-weight: 700; color: #0369A1;">Wilayah ${subm.area}</span>)
+                </div>
+                ${
+                  subm.coords
+                    ? `<div style="margin-top: 2px;">
+                        <a href="https://www.google.com/maps?q=${encodeURIComponent(subm.coords)}" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: #0284C7; text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+                          <span>📍 Koordinat GPS: ${subm.coords}</span>
+                          <span>↗</span>
+                        </a>
+                      </div>`
+                    : ""
+                }
+              </div>
+
+              <!-- Column 2: Issue Details & Division Recommendation -->
+              <div style="display: flex; flex-direction: column; gap: 6px; background: #F8FAFC; padding: 12px; border-radius: 10px; border: 1px solid #E2E8F0;">
+                <div style="font-size: 11px; font-weight: 800; color: #64748B; text-transform: uppercase;">
+                  ⚠️ Rincian Keluhan & Klasifikasi Masalah
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  <span style="font-weight: 800; font-size: 12.5px; color: #0F172A;">
+                    [${subm.category}] ${catMeta ? catMeta.name : subm.category}
+                  </span>
+                </div>
+                <div style="font-size: 11.5px; color: #475569; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px; line-height: 1.5;">
+                  "${subm.desc}"
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
+                  <span style="font-size: 11px; color: #64748B;">Rekomendasi Divisi:</span>
+                  <span style="font-size: 11px; font-weight: 800; color: ${divMeta.badgeColor}; background: #FFFFFF; border: 1px solid #E2E8F0; padding: 2px 8px; border-radius: 6px;">
+                    ${divMeta.name}
+                  </span>
+                </div>
+                ${
+                  subm.photo
+                    ? `<div style="margin-top: 4px; display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #475569;">📷 Foto Bukti:</span>
+                        <button class="btn-preview-photo" data-photo="${encodeURIComponent(subm.photo)}" style="padding: 3px 8px; font-size: 10.5px; font-weight: 700; background: #EFF6FF; border: 1px solid #BFDBFE; color: #1D4ED8; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                          <span>👁️ Lihat Foto Bukti</span>
+                        </button>
+                      </div>`
+                    : ""
+                }
+              </div>
+
+            </div>
+
+            <!-- Bottom Action Bar -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding-top: 8px; border-top: 1px solid #F1F5F9;">
+              
+              <!-- Left Info / Created Info -->
+              <div>
+                ${
+                  isConverted
+                    ? `<div style="font-size: 12px; color: #047857; font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span>🚀 <b>Case ID: #${subm.createdCaseId}</b></span>
+                        <span>•</span>
+                        <span>No. WO: <b style="font-family:monospace;">${subm.createdTicketId}</b></span>
+                        <span style="font-size: 11px; font-weight: normal; color: #64748B;">(Diterbitkan oleh ${subm.verifiedBy || "CS"} pada ${formatTicketDateTime(subm.verifiedAt)})</span>
+                      </div>`
+                    : isRejected
+                    ? `<div style="font-size: 11.5px; color: #DC2626; font-weight: 600;">
+                        Alasan Ditolak: "${subm.rejectionReason || "Tidak memenuhi kriteria"}" (${subm.verifiedBy || "CS"})
+                      </div>`
+                    : `<div style="font-size: 11.5px; color: #D97706; font-weight: 700;">
+                        ⚡ Klik <b>"Buat Kasus Langsung"</b> untuk menerbitkan Work Order otomatis tanpa buka CCnB
+                      </div>`
+                }
+              </div>
+
+              <!-- Right Buttons -->
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                ${
+                  isPending
+                    ? `
+                    <button class="btn-subm-instant-create px-4 py-2 bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-700 hover:to-sky-700 text-white font-black text-xs rounded-lg shadow-md cursor-pointer inline-flex items-center gap-2 transition" data-id="${subm.id}">
+                      <span>⚡</span> <span>Buat Kasus Langsung (1-Klik)</span>
+                    </button>
+                    <button class="btn-subm-prefill-form px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs border border-slate-300 rounded-lg shadow-xs cursor-pointer inline-flex items-center gap-1.5 transition" data-id="${subm.id}">
+                      <span>✏️</span> <span>Review di Form CS</span>
+                    </button>
+                    <button class="btn-subm-reject px-3 py-2 bg-white hover:bg-red-50 text-red-600 font-bold text-xs border border-red-200 rounded-lg shadow-xs cursor-pointer inline-flex items-center gap-1.5 transition" data-id="${subm.id}">
+                      <span>✕</span> <span>Tolak / Duplikat</span>
+                    </button>
+                  `
+                    : isConverted
+                    ? `
+                    <button class="btn-subm-view-wo px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 rounded-lg cursor-pointer inline-flex items-center gap-1.5" data-ticket="${subm.createdTicketId}">
+                      <span>👁️</span> <span>Lihat di Antrean WO</span>
+                    </button>
+                    <button class="btn-subm-wa-chat px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200 rounded-lg cursor-pointer inline-flex items-center gap-1.5" data-id="${subm.id}">
+                      <span>💬</span> <span>Kirim Update WA</span>
+                    </button>
+                  `
+                    : `
+                    <button class="btn-subm-restore px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-300 rounded-lg cursor-pointer inline-flex items-center gap-1.5" data-id="${subm.id}">
+                      <span>🔄</span> <span>Buka Kembali (Pulihkan)</span>
+                    </button>
+                  `
+                }
+              </div>
+
+            </div>
+          `;
+
+          feedContainer.appendChild(card);
+        });
+      }
+
+      inboxContainer.appendChild(feedContainer);
+
+      // Bind Event Listeners for Inbox View
+      setTimeout(() => {
+        // Search input
+        const sInput = inboxContainer.querySelector("#inbox-search-input") as HTMLInputElement;
+        if (sInput) {
+          sInput.oninput = (e: any) => {
+            submissionSearchQuery = e.target.value;
+            render();
+          };
+        }
+
+        // Reset filter button
+        const resetBtn = inboxContainer.querySelector("#btn-inbox-reset-filter") as HTMLButtonElement;
+        if (resetBtn) {
+          resetBtn.onclick = () => {
+            submissionFilterStatus = "all";
+            submissionSearchQuery = "";
+            submissionUrgentOnly = false;
+            render();
+          };
+        }
+
+        // Refresh button
+        const refreshBtn = inboxContainer.querySelector("#btn-inbox-refresh") as HTMLButtonElement;
+        if (refreshBtn) {
+          refreshBtn.onclick = () => {
+            render();
+          };
+        }
+
+        // Simulation add button
+        const simBtn = inboxContainer.querySelector("#btn-inbox-add-simulation") as HTMLButtonElement;
+        if (simBtn) {
+          simBtn.onclick = () => {
+            const simId = `SUBM-2026-${String(Date.now()).slice(-4)}`;
+            const sampleAreas = ["Sepatan", "Sepatan Timur", "Pasar Kemis", "Cikupa", "Balaraja", "Jayanti", "Sindang Jaya", "Sukamulya"];
+            const randArea = sampleAreas[Math.floor(Math.random() * sampleAreas.length)];
+            const sampleCategories = ["KBSM", "KATM", "KATR", "KKMR", "KPMR"];
+            const randCat = sampleCategories[Math.floor(Math.random() * sampleCategories.length)];
+            
+            saveSingleSubmission({
+              id: simId,
+              customerName: `Bpk. Agus Santoso (${randArea})`,
+              phone: `0812${Math.floor(10000000 + Math.random() * 90000000)}`,
+              meterId: `0014${Math.floor(10000 + Math.random() * 90000)} (MTR-${Math.floor(10000 + Math.random() * 90000)})`,
+              address: `Jl. Raya Utama No. ${Math.floor(1 + Math.random() * 100)}, Wilayah ${randArea}`,
+              area: randArea,
+              category: randCat,
+              desc: `Simulasi komplain mandiri baru dari warga. Keluhan [${randCat}] segera butuh tindak lanjut teknisi.`,
+              submittedAt: new Date().toISOString(),
+              status: "menunggu_verifikasi",
+              isUrgent: Math.random() > 0.5,
+              source: "Web Portal Mandiri",
+            });
+
+            // @ts-ignore
+            if (window.Swal) {
+              // @ts-ignore
+              window.Swal.fire({
+                icon: "success",
+                title: "Simulasi Pengaduan Dibuat! 📬",
+                text: `Pengaduan baru ${simId} berhasil masuk ke antrean kotak masuk warga.`,
+                timer: 1800,
+                showConfirmButton: false,
+              });
+            }
+            render();
+          };
+        }
+
+        // 1-Click Instant Create Case button
+        const instantBtns = inboxContainer.querySelectorAll(".btn-subm-instant-create");
+        instantBtns.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const id = btn.getAttribute("data-id");
+            const match = allSubms.find((s) => s.id === id);
+            if (match) {
+              convertSubmissionDirectly(match);
+            }
+          });
+        });
+
+        // Pre-fill to CS Intake Form button
+        const prefillBtns = inboxContainer.querySelectorAll(".btn-subm-prefill-form");
+        prefillBtns.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const id = btn.getAttribute("data-id");
+            const match = allSubms.find((s) => s.id === id);
+            if (match) {
+              prefillSubmissionToForm(match);
+            }
+          });
+        });
+
+        // Reject button
+        const rejectBtns = inboxContainer.querySelectorAll(".btn-subm-reject");
+        rejectBtns.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const id = btn.getAttribute("data-id");
+            const match = allSubms.find((s) => s.id === id);
+            if (match) {
+              handleRejectSubmission(match);
+            }
+          });
+        });
+
+        // Restore button
+        const restoreBtns = inboxContainer.querySelectorAll(".btn-subm-restore");
+        restoreBtns.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const id = btn.getAttribute("data-id");
+            const match = allSubms.find((s) => s.id === id);
+            if (match) {
+              handleRestoreSubmission(match);
+            }
+          });
+        });
+
+        // WA chat button
+        const waBtns = inboxContainer.querySelectorAll(".btn-subm-wa-chat");
+        waBtns.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const id = btn.getAttribute("data-id");
+            const match = allSubms.find((s) => s.id === id);
+            if (match) {
+              openChatCustomerWhatsApp(match);
+            }
+          });
+        });
+
+        // View in WO queue button
+        const viewWoBtns = inboxContainer.querySelectorAll(".btn-subm-view-wo");
+        viewWoBtns.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const ticketId = btn.getAttribute("data-ticket");
+            if (ticketId) {
+              searchQuery = ticketId;
+              activeCsTab = "operational";
+              localStorage.setItem("aetra_cs_active_view", "operational");
+              render();
+            }
+          });
+        });
+
+        // Photo preview button
+        const photoBtns = inboxContainer.querySelectorAll(".btn-preview-photo");
+        photoBtns.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const raw = btn.getAttribute("data-photo");
+            if (raw) {
+              previewingSubmissionPhotoUrl = decodeURIComponent(raw);
+              render();
+            }
+          });
+        });
+      }, 0);
+
+      wrapper.appendChild(inboxContainer);
+      container.appendChild(wrapper);
+      return;
+    }
+
+    // =========================================================================
+    // DEDICATED VIEW 2: Executive Analytics BI
+    // =========================================================================
     if (activeCsTab === "analytics") {
       const execView = createExecutiveAnalyticsView({
         tickets,
@@ -749,7 +1682,9 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       return;
     }
 
-    // If Dedicated 30-Day Moving Average view is active
+    // =========================================================================
+    // DEDICATED VIEW 3: 30-Day Moving Average Recharts
+    // =========================================================================
     if (activeCsTab === "moving_avg") {
       const maViewWrapper = document.createElement("div");
       maViewWrapper.className = "space-y-4 font-sans text-slate-100 p-4 rounded-xl";
@@ -768,7 +1703,9 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       return;
     }
 
-    // If CSAT & Officer Satisfaction Rating view is active
+    // =========================================================================
+    // DEDICATED VIEW 4: CSAT & Officer Satisfaction Rating
+    // =========================================================================
     if (activeCsTab === "csat_rating") {
       const csatView = createCustomerSatisfactionDashboardView({
         divisionFilter: "all",
@@ -776,6 +1713,56 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       wrapper.appendChild(csatView);
       container.appendChild(wrapper);
       return;
+    }
+
+    // =========================================================================
+    // OPERATIONAL NOTIFICATION: Banner Pengaduan Warga Masuk (Jika Ada Pending)
+    // =========================================================================
+    if (pendingSubmsCount > 0) {
+      const pendingBanner = document.createElement("div");
+      pendingBanner.style.cssText = `
+        background: linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%);
+        border: 1.5px solid #F59E0B;
+        border-radius: 12px;
+        padding: 12px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        box-shadow: 0 2px 8px rgba(245,158,11,0.15);
+      `;
+      pendingBanner.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 34px; height: 34px; border-radius: 50%; background: #F59E0B; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 17px; box-shadow: 0 0 10px rgba(245,158,11,0.5);">
+            🔔
+          </div>
+          <div>
+            <div style="font-size: 13px; font-weight: 800; color: #92400E;">
+              Ada ${pendingSubmsCount} Pengaduan Mandiri Warga Menunggu Verifikasi CS!
+            </div>
+            <div style="font-size: 11px; color: #B45309;">
+              Pelanggan telah mengisi komplain lewat Portal Mandiri / Bot. Anda dapat langsung mengonversinya menjadi Kasus & Work Order.
+            </div>
+          </div>
+        </div>
+        <button id="btn-banner-open-inbox" type="button" style="padding: 7px 15px; font-size: 12px; font-weight: 800; background: #D97706; hover:background: #B45309; color: #FFFFFF; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 5px rgba(217,119,6,0.3);">
+          <span>📥</span> <span>Buka Kotak Masuk (${pendingSubmsCount})</span>
+        </button>
+      `;
+
+      setTimeout(() => {
+        const btn = pendingBanner.querySelector("#btn-banner-open-inbox") as HTMLButtonElement;
+        if (btn) {
+          btn.onclick = () => {
+            activeCsTab = "customer_inbox";
+            localStorage.setItem("aetra_cs_active_view", "customer_inbox");
+            render();
+          };
+        }
+      }, 0);
+
+      wrapper.appendChild(pendingBanner);
     }
 
     // =========================================================================
@@ -1113,6 +2100,7 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     // Form Input Work Order / Komplain Baru (Sesuai Gambar 1 & Gambar 2)
     if (formOpen && isViewItemVisible("customer_service", "cs_intake_form")) {
       const formCard = document.createElement("div");
+      formCard.id = "cs-intake-form-card";
       formCard.className = "bg-white border border-slate-200 rounded-xl p-5 md:p-6 shadow-sm mb-4";
       formCard.style.cssText = "box-shadow: 0 1px 4px rgba(0,0,0,0.06);";
 
@@ -1136,6 +2124,32 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
             </button>
           </div>
         </div>
+
+        ${
+          activeProcessingSubmissionId
+            ? `
+            <!-- Active Processing Customer Submission Notice -->
+            <div class="mb-4 p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border-1.5 border-amber-300 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-900 shadow-xs">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-amber-200 border border-amber-400 flex items-center justify-center text-sm font-bold shrink-0">
+                  📌
+                </div>
+                <div>
+                  <div class="font-bold text-[12.5px] text-amber-950">
+                    Sedang Meninjau Pengaduan Warga: <span class="font-mono bg-amber-200/80 px-2 py-0.5 rounded">${activeProcessingSubmissionId}</span> (${newCustomer})
+                  </div>
+                  <div class="text-[11px] text-amber-800 mt-0.5">
+                    Data dari portal warga telah diisi ke formulir. Klik <b>"Simpan & Terbitkan Kasus"</b> di bawah untuk otomatis menyelesaikan verifikasi pengaduan ini.
+                  </div>
+                </div>
+              </div>
+              <button type="button" id="btn-cancel-submission-link" class="px-3 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold cursor-pointer transition shrink-0 shadow-xs">
+                ✕ Lepas Tautan
+              </button>
+            </div>
+            `
+            : ""
+        }
 
         <!-- CCnB Replacement Smart Customer Lookup Bar -->
         <div class="mb-5 p-3.5 bg-gradient-to-r from-blue-50/90 via-indigo-50/60 to-slate-50 border border-blue-200 rounded-xl relative">
@@ -1433,6 +2447,14 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
               masterDropdown.classList.add("hidden");
             }
           });
+        }
+
+        const cancelSubmBtn = document.getElementById("btn-cancel-submission-link") as HTMLButtonElement;
+        if (cancelSubmBtn) {
+          cancelSubmBtn.onclick = () => {
+            activeProcessingSubmissionId = null;
+            render();
+          };
         }
 
         const quickDataBtn = document.getElementById("btn-quick-sample-data") as HTMLButtonElement;
@@ -2086,6 +3108,44 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       }, 0);
     }
 
+    // Modal Preview Foto Bukti Pengaduan Warga
+    if (previewingSubmissionPhotoUrl) {
+      const photoOverlay = document.createElement("div");
+      photoOverlay.style.cssText = "position: fixed; inset: 0; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(5px); z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 20px;";
+      photoOverlay.innerHTML = `
+        <div style="background: #1E293B; border: 1px solid #334155; border-radius: 16px; max-width: 700px; width: 100%; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+          <div style="padding: 12px 16px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-weight: 800; font-size: 13px; color: #F8FAFC; display: flex; align-items: center; gap: 8px;">
+              <span>📷</span> <span>Foto Bukti Lampiran Pengaduan Pelanggan</span>
+            </div>
+            <button type="button" id="btn-close-subm-photo" style="background: #334155; color: #F8FAFC; border: none; border-radius: 6px; padding: 4px 10px; font-weight: 800; cursor: pointer;">✕</button>
+          </div>
+          <div style="padding: 16px; display: flex; justify-content: center; background: #0F172A; max-height: 70vh; overflow: auto;">
+            <img src="${previewingSubmissionPhotoUrl}" alt="Bukti Pengaduan Pelanggan" style="max-width: 100%; max-height: 65vh; object-fit: contain; border-radius: 8px; border: 1px solid #334155;" />
+          </div>
+          <div style="padding: 12px 16px; border-top: 1px solid #334155; text-align: right;">
+            <button type="button" id="btn-close-subm-photo-bottom" style="padding: 6px 14px; background: #0284C7; color: #FFF; font-weight: 700; font-size: 12px; border: none; border-radius: 6px; cursor: pointer;">Tutup Preview</button>
+          </div>
+        </div>
+      `;
+
+      setTimeout(() => {
+        const cBtn1 = document.getElementById("btn-close-subm-photo");
+        const cBtn2 = document.getElementById("btn-close-subm-photo-bottom");
+        const close = () => {
+          previewingSubmissionPhotoUrl = null;
+          render();
+        };
+        if (cBtn1) cBtn1.onclick = close;
+        if (cBtn2) cBtn2.onclick = close;
+        photoOverlay.onclick = (e) => {
+          if (e.target === photoOverlay) close();
+        };
+      }, 0);
+
+      wrapper.appendChild(photoOverlay);
+    }
+
     container.appendChild(wrapper);
   }
 
@@ -2097,7 +3157,12 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
   window.addEventListener("aetra:dashboard_view_preference_changed", onViewPrefChange);
 
   const onCsSwitchView = (e: any) => {
-    if (e.detail?.view === "analytics" || e.detail?.view === "operational" || e.detail?.view === "moving_avg") {
+    if (
+      e.detail?.view === "analytics" ||
+      e.detail?.view === "operational" ||
+      e.detail?.view === "moving_avg" ||
+      e.detail?.view === "customer_inbox"
+    ) {
       activeCsTab = e.detail.view;
       localStorage.setItem("aetra_cs_active_view", e.detail.view);
       render();
@@ -2111,8 +3176,19 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
   };
   window.addEventListener("aetra:tickets_changed", onTicketsChanged);
   window.addEventListener("aetra:dashboard_refresh_needed", onTicketsChanged);
+
+  const onSubmissionsUpdated = () => {
+    render();
+  };
+  window.addEventListener("aetra:customer_submissions_updated", onSubmissionsUpdated);
+  window.addEventListener("aetra:new_customer_submission", onSubmissionsUpdated);
+
   const onStorageChange = (e: StorageEvent) => {
-    if (e.key === "aetra_work_orders_backup" || e.key === "aetra_latest_wo_notification_event") {
+    if (
+      e.key === "aetra_work_orders_backup" ||
+      e.key === "aetra_latest_wo_notification_event" ||
+      e.key === "aetra_customer_self_submissions"
+    ) {
       onTicketsChanged();
     }
   };
@@ -2125,6 +3201,8 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     window.removeEventListener("aetra:cs_switch_view", onCsSwitchView);
     window.removeEventListener("aetra:tickets_changed", onTicketsChanged);
     window.removeEventListener("aetra:dashboard_refresh_needed", onTicketsChanged);
+    window.removeEventListener("aetra:customer_submissions_updated", onSubmissionsUpdated);
+    window.removeEventListener("aetra:new_customer_submission", onSubmissionsUpdated);
     window.removeEventListener("storage", onStorageChange);
     container.innerHTML = "";
   };

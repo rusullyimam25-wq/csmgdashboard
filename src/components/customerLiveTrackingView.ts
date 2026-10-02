@@ -19,21 +19,14 @@ import {
 
 // Approximate coordinates for Tangerang operational zones if ticket coords are empty
 const AREA_COORDINATES: Record<string, [number, number]> = {
-  "Tangerang Kota": [-6.1783, 106.6319],
-  "Cipondoh": [-6.1865, 106.6712],
-  "Ciledug": [-6.2241, 106.7082],
-  "Karawaci": [-6.1956, 106.6122],
-  "Periuk": [-6.1478, 106.5982],
-  "Jatiuwung": [-6.2089, 106.5678],
-  "Batuceper": [-6.1601, 106.6698],
-  "Benda": [-6.1287, 106.6912],
-  "Pinang": [-6.2167, 106.6742],
-  "Larangan": [-6.2392, 106.7321],
-  "Neglasari": [-6.1523, 106.6412],
-  "Cibodas": [-6.1978, 106.5891],
+  "Sepatan": [-6.123, 106.572],
+  "Sepatan Timur": [-6.135, 106.589],
   "Pasar Kemis": [-6.1612, 106.5387],
   "Cikupa": [-6.2341, 106.5189],
   "Balaraja": [-6.1989, 106.4523],
+  "Jayanti": [-6.2412, 106.4182],
+  "Sindang Jaya": [-6.1823, 106.5211],
+  "Sukamulya": [-6.1412, 106.4712],
 };
 
 const AETRA_HQ_COORDS: [number, number] = [-6.1725, 106.6385]; // AETRA Air Tangerang Hub
