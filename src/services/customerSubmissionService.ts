@@ -16,6 +16,7 @@ export interface CustomerSubmission {
   category: string;
   desc: string;
   photo?: string | null;
+  video?: string | null;
   coords?: string;
   submittedAt: string;
   status: "menunggu_verifikasi" | "dibuatkan_kasus" | "ditolak";

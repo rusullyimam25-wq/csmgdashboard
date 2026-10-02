@@ -146,6 +146,7 @@ export function renderCustomerSelfServiceComplaintView(container: HTMLElement): 
   let descValue = "";
   let isUrgent = false;
   let photoDataUrl: string | null = null;
+  let videoDataUrl: string | null = null;
   let isSubmitting = false;
   let submittedTicket: UnifiedTicket | null = null;
 
@@ -522,7 +523,7 @@ Apa yang sedang dialami di rumah Anda saat ini?`,
                 <button
                   id="btn-send-ai-chat"
                   type="button"
-                  disabled="${isAiThinking}"
+                  ${isAiThinking ? "disabled" : ""}
                   style="padding: 9px 14px; font-size: 12px; font-weight: 800; background: #0284C7; color: #FFFFFF; border: none; border-radius: 10px; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 4px;"
                 >
                   <span>Kirim</span> <span>➔</span>
@@ -789,7 +790,52 @@ Apa yang sedang dialami di rumah Anda saat ini?`,
               </div>
             </div>
 
-            <!-- Urgency Toggle Checkbox -->
+            <!-- Video Upload with Preview -->
+            <div>
+              <label style="display: block; font-size: 11.5px; font-weight: 700; color: #E2E8F0; margin-bottom: 4px;">
+                Lampirkan Video Bukti Kondisi Air/Pipa (Opsional):
+              </label>
+              
+              <div style="background: #0F172A; border: 1.5px dashed #334155; border-radius: 12px; padding: 12px; text-align: center;">
+                ${
+                  videoDataUrl
+                    ? `
+                  <div style="position: relative; display: inline-block; width: 100%;">
+                    <video src="${videoDataUrl}" controls style="max-height: 140px; width: 100%; border-radius: 8px; border: 1px solid #475569;"></video>
+                    <button
+                      id="btn-remove-video"
+                      type="button"
+                      style="position: absolute; top: 4px; right: 4px; background: #EF4444; color: #FFFFFF; border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 11px; cursor: pointer; font-weight: 800;"
+                    >✕</button>
+                  </div>
+                  <div style="font-size: 10px; color: #34D399; margin-top: 6px;">✓ Video berhasil dilampirkan</div>
+                `
+                    : `
+                  <div style="font-size: 24px; margin-bottom: 4px;">📹</div>
+                  <div style="font-size: 11.5px; font-weight: 700; color: #F8FAFC; margin-bottom: 2px;">
+                    Rekam Video atau Pilih File Video
+                  </div>
+                  <div style="font-size: 10.5px; color: #94A3B8; margin-bottom: 8px;">
+                    Format MP4/MOV maks. 25MB
+                  </div>
+                  <input
+                    id="input-video"
+                    type="file"
+                    accept="video/*"
+                    capture="environment"
+                    style="display: none;"
+                  />
+                  <button
+                    id="btn-trigger-video"
+                    type="button"
+                    style="padding: 6px 14px; font-size: 11.5px; font-weight: 800; background: #334155; color: #FFFFFF; border: 1px solid #475569; border-radius: 8px; cursor: pointer;"
+                  >
+                    Pilih Video
+                  </button>
+                `
+                }
+              </div>
+            </div>
             <label style="display: flex; align-items: flex-start; gap: 10px; background: rgba(239, 68, 68, 0.1); border: 1.5px solid rgba(239, 68, 68, 0.35); border-radius: 12px; padding: 12px; cursor: pointer;">
               <input
                 id="check-urgent"
@@ -814,7 +860,7 @@ Apa yang sedang dialami di rumah Anda saat ini?`,
             <button
               id="btn-submit-complaint"
               type="submit"
-              disabled="${isSubmitting}"
+              ${isSubmitting ? "disabled" : ""}
               style="width: 100%; padding: 14px; font-size: 14px; font-weight: 900; background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%); color: #FFFFFF; border: none; border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 18px rgba(2, 132, 199, 0.45); transition: transform 0.15s ease;"
             >
               <span>🚀</span>
@@ -1027,10 +1073,58 @@ Apa yang sedang dialami di rumah Anda saat ini?`,
       });
     }
 
+    // Video Upload Trigger & Removal
+    const triggerVideoBtn = form.querySelector("#btn-trigger-video");
+    const videoFileInput = form.querySelector("#input-video") as HTMLInputElement | null;
+    if (triggerVideoBtn && videoFileInput) {
+      triggerVideoBtn.addEventListener("click", () => videoFileInput.click());
+      videoFileInput.addEventListener("change", (e: any) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) {
+          if (file.size > 25 * 1024 * 1024) {
+            alert("Ukuran video terlalu besar. Maksimal 25MB.");
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = (re) => {
+            videoDataUrl = re.target?.result as string;
+            render();
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+    }
+
+    const removeVideoBtn = form.querySelector("#btn-remove-video");
+    if (removeVideoBtn) {
+      removeVideoBtn.addEventListener("click", () => {
+        videoDataUrl = null;
+        render();
+      });
+    }
+
     // Form Submit Handler
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       if (isSubmitting) return;
+
+      const meterVal = meterInput ? meterInput.value.trim() : meterIdValue;
+      const nameVal = nameInput ? nameInput.value.trim() : customerNameValue;
+      const phoneVal = phoneInput ? phoneInput.value.trim() : phoneValue;
+      const addressVal = addressInput ? addressInput.value.trim() : addressValue;
+      const areaVal = areaSelect ? areaSelect.value : areaValue;
+      const descVal = descInput ? descInput.value.trim() : descValue;
+
+      if (!meterVal || !nameVal || !phoneVal || !addressVal) {
+        alert("Mohon lengkapi No. Pelanggan/Meter, Nama Pelanggan, No. HP, dan Alamat Anda.");
+        isSubmitting = false;
+        const submitBtn = form.querySelector("#btn-submit-complaint") as HTMLButtonElement | null;
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "🚀 Kirim Pengaduan & Dapatkan No. Tiket";
+        }
+        return;
+      }
 
       const catInfo = ISSUE_CATEGORIES.find((c) => c.code === selectedCategoryCode) || ISSUE_CATEGORIES[0];
       const targetDiv: DivisionId = catInfo.defaultDivision || getRecommendedDivision(catInfo.code);
@@ -1058,17 +1152,18 @@ Apa yang sedang dialami di rumah Anda saat ini?`,
       const newTicket: UnifiedTicket = {
         id: newWoId,
         caseId: newCaseId,
-        customer: customerNameValue.trim(),
-        meterId: meterIdValue.trim(),
-        phone: phoneValue.trim(),
-        address: addressValue.trim(),
-        area: areaValue,
+        customer: nameVal,
+        meterId: meterVal,
+        phone: phoneVal,
+        address: addressVal,
+        area: areaVal,
         category: catInfo.code,
-        desc: descValue.trim() || `${catInfo.title} - ${catInfo.desc}`,
+        desc: descVal || `${catInfo.title} - ${catInfo.desc}`,
         status: "baru",
         urgent: isUrgent,
         coords: coordsValue || undefined,
         photoBefore: photoDataUrl || undefined,
+        videoBefore: videoDataUrl || undefined,
         receivedAt: new Date().toISOString(),
         targetDivision: targetDiv,
         distributionStatus: "distributed",
@@ -1080,7 +1175,7 @@ Apa yang sedang dialami di rumah Anda saat ini?`,
         comments: [
           {
             id: `cmt-init-${Date.now()}`,
-            authorName: `${customerNameValue.trim()} (Pelapor Mandiri)`,
+            authorName: `${nameVal} (Pelapor Mandiri)`,
             authorDivision: "customer_service",
             authorRole: "Pelanggan",
             targetDepartment: "Semua Divisi Teknis",
@@ -1093,14 +1188,15 @@ Apa yang sedang dialami di rumah Anda saat ini?`,
       // Save to customer submissions inbox queue for CS verification
       saveSingleSubmission({
         id: `SUBM-2026-${String(Date.now()).slice(-4)}`,
-        customerName: customerNameValue.trim(),
-        phone: phoneValue.trim(),
-        meterId: meterIdValue.trim(),
-        address: addressValue.trim(),
-        area: areaValue,
+        customerName: nameVal,
+        phone: phoneVal,
+        meterId: meterVal,
+        address: addressVal,
+        area: areaVal,
         category: catInfo.code,
-        desc: descValue.trim() || `${catInfo.title} - ${catInfo.desc}`,
+        desc: descVal || `${catInfo.title} - ${catInfo.desc}`,
         photo: photoDataUrl || null,
+        video: videoDataUrl || null,
         coords: coordsValue || undefined,
         submittedAt: new Date().toISOString(),
         status: "menunggu_verifikasi",

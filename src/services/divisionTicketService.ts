@@ -24,6 +24,7 @@ export interface UnifiedTicket {
   officer?: string;
   rescheduledDate?: string | null;
   photoBefore?: string | null;
+  videoBefore?: string | null;
   photoAfter?: string | null;
   completionNotes?: string;
   usedMaterials?: string[];
